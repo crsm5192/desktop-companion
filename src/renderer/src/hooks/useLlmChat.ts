@@ -9,7 +9,7 @@ interface SendOptions {
   onComplete?: (speakText: string) => void
 }
 
-export function useHermesChat(): {
+export function useLlmChat(): {
   messages: ChatMessage[]
   streaming: boolean
   error: string | null

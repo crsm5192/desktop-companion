@@ -3,7 +3,7 @@ import { IPC } from '../../shared/constants'
 import type { AppConfig, ChatMessage, DeepPartial, DiaryEntry, SiyuanConfig, TodoItem } from '../../shared/types'
 import { getConfig, setConfig } from '../config'
 import { getMainWindow, clampWindowPosition, setWindowPosition, applyFrameScale } from '../window'
-import { streamChat } from '../services/hermes'
+import { streamChat } from '../services/llm'
 import { synthesize } from '../services/tts'
 import { listNotebooks, syncDiary, syncTodoList, testConnection as siyuanTest } from '../services/siyuan'
 import { discoverModelActions, listModels } from '../services/models'
@@ -62,7 +62,7 @@ export function registerIpc(): void {
   ipcMain.on(IPC.ChatStream, async (event, messages: ChatMessage[]) => {
     const wc = event.sender
     try {
-      await streamChat(getConfig().hermes, messages, (delta) => {
+      await streamChat(getConfig().llm, messages, (delta) => {
         if (!wc.isDestroyed()) wc.send(IPC.ChatChunk, delta)
       })
       if (!wc.isDestroyed()) wc.send(IPC.ChatDone)

@@ -1,11 +1,11 @@
 import { useEffect, useRef, useState } from 'react'
-import { useHermesChat } from '../../hooks/useHermesChat'
+import { useLlmChat } from '../../hooks/useLlmChat'
 import { useTTS } from '../../hooks/useTTS'
 import { useCharacter } from '../../hooks/useCharacter'
 import ChatBubble from './ChatBubble'
 
 export default function ChatPanel(): JSX.Element {
-  const { messages, streaming, error, send, clear } = useHermesChat()
+  const { messages, streaming, error, send, clear } = useLlmChat()
   const { speak, error: ttsError } = useTTS()
   const ch = useCharacter()
   const [input, setInput] = useState('')
@@ -21,7 +21,7 @@ export default function ChatPanel(): JSX.Element {
     const text = input.trim()
     if (!text || streaming) return
     setInput('')
-    // onComplete 收到的是「语音文本」（日语优先），见 useHermesChat
+    // onComplete 收到的是「语音文本」（日语优先），见 useLlmChat
     send(text, { onComplete: voiceOn ? (s) => void speak(s) : undefined })
   }
 

@@ -1,14 +1,18 @@
-import type { ChatMessage, HermesConfig } from '../../shared/types'
+import type { ChatMessage, LlmConfig } from '../../shared/types'
 
 /**
- * 调用 hermes-agent 的 OpenAI 兼容接口，流式返回。
- * 参考：https://hermes-agent.nousresearch.com/docs/user-guide/features/api-server
+ * OpenAI 兼容的流式对话客户端（通用，不绑定任何特定服务商）。
  *
- * 假设 baseUrl 形如 http://127.0.0.1:8000，会补成 /v1/chat/completions；
- * 若 baseUrl 已以 /v1 结尾，则直接接 /chat/completions。
+ * 支持任何实现了 `POST /v1/chat/completions` + `Authorization: Bearer <key>` +
+ * SSE (`data: {...}` / `data: [DONE]`) 的服务，例如：
+ *   OpenAI / DeepSeek / Moonshot / 智谱 / 本地 vLLM / LM Studio / Ollama(OpenAI 兼容层) ...
+ *
+ * baseUrl 兼容两种写法：
+ *   http://127.0.0.1:8000      → 自动补 /v1/chat/completions
+ *   http://127.0.0.1:8000/v1   → 自动补 /chat/completions
  */
 export async function streamChat(
-  cfg: HermesConfig,
+  cfg: LlmConfig,
   messages: ChatMessage[],
   onChunk: (delta: string) => void,
   signal?: AbortSignal
@@ -28,9 +32,9 @@ export async function streamChat(
 
   if (!res.ok) {
     const text = await res.text().catch(() => '')
-    throw new Error(`hermes 请求失败 HTTP ${res.status}: ${text.slice(0, 300)}`)
+    throw new Error(`对话接口请求失败 HTTP ${res.status}: ${text.slice(0, 300)}`)
   }
-  if (!res.body) throw new Error('hermes 未返回流式 body')
+  if (!res.body) throw new Error('对话接口未返回流式响应')
 
   const reader = res.body.getReader()
   const decoder = new TextDecoder('utf-8')

@@ -22,8 +22,9 @@ export interface CharacterConfig {
   userName: string
 }
 
-export interface HermesConfig {
-  /** hermes-agent 的 OpenAI 兼容 API 服务地址，例如 http://127.0.0.1:8000 */
+/** 大模型接口配置（任意 OpenAI 兼容服务） */
+export interface LlmConfig {
+  /** 服务地址，例如 https://api.deepseek.com 或 http://127.0.0.1:8000（自动补 /v1/chat/completions） */
   baseUrl: string
   apiKey: string
   model: string
@@ -93,13 +94,13 @@ export interface ChatConfig {
   persona: string
   /** 语音输出规则（告诉模型如何输出「日语：」行） */
   voiceRule: string
-  /** 发送给 hermes 的历史消息条数上限 */
+  /** 发送给模型的历史消息条数上限 */
   historyLimit: number
 }
 
 export interface AppConfig {
   character: CharacterConfig
-  hermes: HermesConfig
+  llm: LlmConfig
   tts: TtsConfig
   siyuan: SiyuanConfig
   pet: PetConfig

@@ -105,27 +105,27 @@ export default function SettingsPanel(): JSX.Element {
       </fieldset>
 
       <fieldset>
-        <legend>hermes-agent（OpenAI 兼容 API）</legend>
+        <legend>对话模型（任意 OpenAI 兼容 API）</legend>
         <label>
           Base URL
           <input
-            value={cfg.hermes.baseUrl}
-            onChange={(e) => patch({ hermes: { ...cfg.hermes, baseUrl: e.target.value } })}
+            value={cfg.llm.baseUrl}
+            onChange={(e) => patch({ llm: { ...cfg.llm, baseUrl: e.target.value } })}
           />
         </label>
         <label>
           API Key
           <input
             type="password"
-            value={cfg.hermes.apiKey}
-            onChange={(e) => patch({ hermes: { ...cfg.hermes, apiKey: e.target.value } })}
+            value={cfg.llm.apiKey}
+            onChange={(e) => patch({ llm: { ...cfg.llm, apiKey: e.target.value } })}
           />
         </label>
         <label>
           Model
           <input
-            value={cfg.hermes.model}
-            onChange={(e) => patch({ hermes: { ...cfg.hermes, model: e.target.value } })}
+            value={cfg.llm.model}
+            onChange={(e) => patch({ llm: { ...cfg.llm, model: e.target.value } })}
           />
         </label>
       </fieldset>

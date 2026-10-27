@@ -6,8 +6,8 @@ import { externalConfigFile } from './paths'
 
 // 默认配置 —— 请按你自己的环境修改（也可在设置面板或 config.json 里改）：
 // - character：角色设定（名字/称呼），换掉这里就能装别的角色
-// - hermes：OpenAI 兼容 API server（baseUrl/apiKey/model 按你的 gateway 配置填）
-// - tts   ：CosyVoice 语音（server 模式 = 常驻 HTTP 服务；command 模式 = CLI 脚本）
+// - llm   ：任意 OpenAI 兼容对话接口（OpenAI / DeepSeek / 智谱 / 本地 vLLM 等）
+// - tts   ：语音合成（server 模式 = 常驻 HTTP 服务；command 模式 = CLI 脚本）
 // - siyuan：思源内核 HTTP API（默认 6806）
 const DEFAULT_CONFIG: AppConfig = {
   character: {
@@ -16,10 +16,10 @@ const DEFAULT_CONFIG: AppConfig = {
     shortName: '伴侣',
     userName: '你'
   },
-  hermes: {
-    baseUrl: 'http://127.0.0.1:8642',
+  llm: {
+    baseUrl: 'https://api.deepseek.com',
     apiKey: '',
-    model: 'deepseek-v4-flash-0731'
+    model: 'deepseek-chat'
   },
   tts: {
     mode: 'server', // server = 常驻 TTS 服务（推荐）；command = 每句 spawn 语音脚本（备用）
@@ -73,12 +73,25 @@ function configFile(): string {
 function mergeConfig(base: AppConfig, patch: DeepPartial<AppConfig>): AppConfig {
   return {
     character: { ...base.character, ...(patch.character ?? {}) },
-    hermes: { ...base.hermes, ...(patch.hermes ?? {}) },
+    llm: { ...base.llm, ...(patch.llm ?? {}) },
     tts: { ...base.tts, ...(patch.tts ?? {}), server: { ...base.tts.server, ...(patch.tts?.server ?? {}) } },
     siyuan: { ...base.siyuan, ...(patch.siyuan ?? {}) },
     pet: { ...base.pet, ...(patch.pet ?? {}) },
     chat: { ...base.chat, ...(patch.chat ?? {}) }
   }
+}
+
+/**
+ * 兼容旧版配置：老版本把对话接口配置存在 `hermes` 段，现在改名为 `llm`。
+ * 载入时若发现只有 `hermes` 就自动映射过去，避免用户升级后接口失效。
+ */
+function migrateLegacyKeys(raw: Record<string, unknown>): Record<string, unknown> {
+  const out = { ...raw }
+  if (!out.llm && out.hermes) {
+    out.llm = out.hermes
+    delete out.hermes
+  }
+  return out
 }
 
 export function getConfig(): AppConfig {
@@ -87,7 +100,8 @@ export function getConfig(): AppConfig {
   let loaded = DEFAULT_CONFIG
   try {
     if (existsSync(f)) {
-      loaded = mergeConfig(DEFAULT_CONFIG, JSON.parse(readFileSync(f, 'utf-8')) as Partial<AppConfig>)
+      const raw = JSON.parse(readFileSync(f, 'utf-8')) as Record<string, unknown>
+      loaded = mergeConfig(DEFAULT_CONFIG, migrateLegacyKeys(raw) as Partial<AppConfig>)
     }
   } catch (e) {
     console.error('[config] 读取失败，回退默认配置：', e)
