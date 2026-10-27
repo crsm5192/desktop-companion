@@ -1,7 +1,7 @@
 # 在桌面创建「桌面伴侣（开发版）」快捷方式：一键跑 npm run dev
 $ErrorActionPreference = 'Stop'
 
-$proj = 'D:\workspace\awa-subaru-companion'
+$proj = 'D:\workspace\desktop-companion'
 $cmd = Join-Path $proj '启动开发版.cmd'
 $ico = Join-Path $proj 'icon-dev.ico'
 $desktop = [Environment]::GetFolderPath('Desktop')

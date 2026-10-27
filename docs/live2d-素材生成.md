@@ -106,7 +106,7 @@ AI 拆层通常不完美，进 Cubism 前要确认这些**关键层都在、且�
 | `ParamAngleX` / `ParamAngleY` | 头部轻微转动（可选） | 头、发、五官 |
 | `ParamBodyAngleX` | 身体轻微摆动（可选） | 身体 |
 
-导出：`.moc3` + 贴图 + `model3.json`，放进 `awa-subaru-companion/resources/models/`，设置里填 `modelPath` 即可替换占位小人。
+导出：`.moc3` + 贴图 + `model3.json`，放进 `desktop-companion/resources/models/`，设置里填 `modelPath` 即可替换占位小人。
 
 ---
 
