@@ -159,6 +159,22 @@ npm run build:win            # 两者都出
   - 跑在局域网另一台有显卡的机器上（桌宠填该机器 IP）
   - 完全不部署语音服务（桌宠里把 TTS 关掉，纯文字聊天）
 
+## 下载
+
+| 版本 | 说明 |
+|---|---|
+| **[便携版](https://github.com/crsm5192/desktop-companion/releases/latest/download/DesktopCompanion.0.1.0.exe)** | 免安装，解压即用；模型/音乐/配置/数据都在 exe 旁边，可整个文件夹带走 |
+| **[安装版](https://github.com/crsm5192/desktop-companion/releases/latest/download/DesktopCompanion.Setup.0.1.0.exe)** | NSIS 安装包，启动更快；数据存在 `%APPDATA%\DesktopCompanion\`，覆盖安装不清空 |
+
+> 全部版本见 **[Releases](https://github.com/crsm5192/desktop-companion/releases)**。
+> 模型与音乐因版权不随包分发，需自行放入数据目录（见上文「数据存放位置」）。
+
+### 配套语音服务（可选）
+
+桌宠可以不装语音服务（纯文字聊天）；想让角色开口说话，部署配套项目即可：
+
+- 🔊 **[companion-voice-server](https://github.com/crsm5192/companion-voice-server)** ｜ **[其 Releases](https://github.com/crsm5192/companion-voice-server/releases)**
+
 ## 许可
 
 MIT
