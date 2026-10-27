@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import type { AppConfig, ModelInfo, SiyuanNotebook } from '@shared/types'
 import { usePetStore } from '../../store/pet'
+import { refreshCharacter } from '../../hooks/useCharacter'
 
 export default function SettingsPanel(): JSX.Element {
   const [cfg, setCfg] = useState<AppConfig | null>(null)
@@ -31,6 +32,8 @@ export default function SettingsPanel(): JSX.Element {
     usePetStore.getState().setLocked(cfg.pet.locked)
     usePetStore.getState().setEyeTracking(cfg.pet.eyeTracking)
     usePetStore.getState().setOpacity(cfg.pet.opacity)
+    // 角色名即时刷新（聊天标题/气泡落款/占位文字）
+    refreshCharacter()
     setSaved(true)
     setTimeout(() => setSaved(false), 1500)
   }
@@ -58,7 +61,7 @@ export default function SettingsPanel(): JSX.Element {
   const testTts = async (): Promise<void> => {
     setTtsStatus('合成中（首次约 10~30 秒，请稍候）…')
     try {
-      const r = await window.api.tts.speak('测试语音，你好，我是安和昴。')
+      const r = await window.api.tts.speak(`测试语音，你好，我是${cfg.character.shortName}。`)
       const audio = new Audio(`data:${r.mime};base64,${r.base64}`)
       await audio.play()
       setTtsStatus('成功，已播放')
@@ -72,6 +75,34 @@ export default function SettingsPanel(): JSX.Element {
       <div className="panel-header">
         <span>设置</span>
       </div>
+
+      <fieldset>
+        <legend>角色设定</legend>
+        <label>
+          角色名（显示在聊天标题 / 托盘）
+          <input
+            value={cfg.character.name}
+            onChange={(e) => patch({ character: { ...cfg.character, name: e.target.value } })}
+            placeholder="例如：小助手 / 初音未来 / 你的角色名"
+          />
+        </label>
+        <label>
+          自称（聊天气泡落款）
+          <input
+            value={cfg.character.shortName}
+            onChange={(e) => patch({ character: { ...cfg.character, shortName: e.target.value } })}
+            placeholder="例如：小助 / 未来"
+          />
+        </label>
+        <label>
+          对你的称呼
+          <input
+            value={cfg.character.userName}
+            onChange={(e) => patch({ character: { ...cfg.character, userName: e.target.value } })}
+            placeholder="例如：你 / 主人 / 老板"
+          />
+        </label>
+      </fieldset>
 
       <fieldset>
         <legend>hermes-agent（OpenAI 兼容 API）</legend>
@@ -100,7 +131,7 @@ export default function SettingsPanel(): JSX.Element {
       </fieldset>
 
       <fieldset>
-        <legend>TTS（安和昴 / CosyVoice）</legend>
+        <legend>TTS（CosyVoice）</legend>
         <label>
           模式
           <select
@@ -134,7 +165,7 @@ export default function SettingsPanel(): JSX.Element {
           />
         </label>
         <label>
-          脚本（subaru_voice.py）
+          脚本（语音合成脚本路径）
           <input
             value={cfg.tts.script}
             onChange={(e) => patch({ tts: { ...cfg.tts, script: e.target.value } })}

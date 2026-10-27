@@ -7,6 +7,21 @@ export interface ChatMessage {
   speakText?: string
 }
 
+/**
+ * 角色设定：让同一个桌宠程序可以装不同的「角色」。
+ * 换名字/称呼即可变成通用伴侣，聊天人设仍由 chat.persona 单独控制。
+ */
+export interface CharacterConfig {
+  /** 角色名（显示在聊天标题、气泡署名、托盘提示） */
+  name: string
+  /** 角色自我介绍用的别名，可留空 */
+  alias: string
+  /** 聊天时角色的自称（气泡落款） */
+  shortName: string
+  /** 对用户的称呼 */
+  userName: string
+}
+
 export interface HermesConfig {
   /** hermes-agent 的 OpenAI 兼容 API 服务地址，例如 http://127.0.0.1:8000 */
   baseUrl: string
@@ -21,11 +36,11 @@ export interface TtsServerConfig {
 }
 
 export interface TtsConfig {
-  /** command = 调 subaru_voice.py（当前已打通）；server = 未来常驻 HTTP 服务 */
+  /** command = 调外部语音脚本；server = 常驻 HTTP TTS 服务 */
   mode: 'command' | 'server'
   /** CosyVoice 的 python.exe 绝对路径 */
   python: string
-  /** subaru_voice.py 绝对路径（文件进/文件出，与 hermes 的 tts-block 同一条链路） */
+  /** 语音脚本绝对路径（文件进/文件出） */
   script: string
   /** 子进程工作目录 */
   cwd: string
@@ -83,6 +98,7 @@ export interface ChatConfig {
 }
 
 export interface AppConfig {
+  character: CharacterConfig
   hermes: HermesConfig
   tts: TtsConfig
   siyuan: SiyuanConfig
@@ -116,6 +132,26 @@ export interface ModelInfo {
   name: string
   /** 相对 public 的 model3.json 路径（渲染层加载用） */
   model3Path: string
+}
+
+/** 模型的一个「按键」动作（表情或动作） */
+export interface ModelAction {
+  /** 按钮显示名 */
+  name: string
+  kind: 'expression' | 'motion'
+  /** 表情：文件相对路径 */
+  file?: string
+  /** 动作：分组名 */
+  group?: string
+  /** 动作：组内序号 */
+  index?: number
+}
+
+/** 模型按键探测结果（modelJSON 为补全声明后的版本） */
+export interface ModelActionsInfo {
+  modelJSON: unknown | null
+  expressions: ModelAction[]
+  motions: ModelAction[]
 }
 
 /** 深层 Partial：允许只传嵌套对象里的部分字段（用于配置部分更新） */

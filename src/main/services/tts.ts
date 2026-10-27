@@ -5,15 +5,15 @@ import { join } from 'node:path'
 import type { TtsConfig, TtsResult } from '../../shared/types'
 
 /**
- * 安和昴语音合成。
- * 默认 command 模式：复用语音脚本（文件进/文件出）。
+ * 语音合成。
+ * 默认 command 模式：复用外部语音脚本（文件进/文件出）；server 模式：调常驻 TTS 服务。
  */
 export async function synthesize(cfg: TtsConfig, text: string): Promise<TtsResult> {
   if (cfg.mode === 'server') return synthesizeServer(cfg, text)
   return synthesizeCommand(cfg, text)
 }
 
-/** 含假名则判为日语，否则中文（与 subaru_voice.py 的 auto 逻辑一致） */
+/** 含假名则判为日语，否则中文 */
 function detectLang(text: string, lang: TtsConfig['lang']): 'zh' | 'jp' {
   if (lang !== 'auto') return lang
   return /[\u3040-\u30ff]/.test(text) ? 'jp' : 'zh'
@@ -21,7 +21,7 @@ function detectLang(text: string, lang: TtsConfig['lang']): 'zh' | 'jp' {
 
 async function synthesizeCommand(cfg: TtsConfig, text: string): Promise<TtsResult> {
   const lang = detectLang(text, cfg.lang)
-  const dir = mkdtempSync(join(tmpdir(), 'subaru-tts-'))
+  const dir = mkdtempSync(join(tmpdir(), 'pet-tts-'))
   const inputPath = join(dir, 'input.txt')
   const outputPath = join(dir, 'output.wav')
   writeFileSync(inputPath, text, 'utf-8')
@@ -73,7 +73,7 @@ async function synthesizeServer(cfg: TtsConfig, text: string): Promise<TtsResult
   if (!res.ok) {
     const err = await res.text().catch(() => '')
     throw new Error(
-      `TTS 服务返回 ${res.status}：${err.slice(0, 300)}。请先启动 subaru_tts_server.py（scripts/start-tts-server.bat）`
+      `TTS 服务返回 ${res.status}：${err.slice(0, 300)}。请先启动你的 TTS 服务（或用 command 模式）`
     )
   }
   const buf = Buffer.from(await res.arrayBuffer())

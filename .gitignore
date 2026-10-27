@@ -23,3 +23,6 @@ src/renderer/public/music/
 scripts/*.py
 scripts/*_result.txt
 scripts/seethrough_contact_sheet.png
+
+# 本地生成的快捷方式图标（由 resources/icon.png 转换而来，可随时重建）
+icon-dev.ico

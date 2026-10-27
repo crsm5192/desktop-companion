@@ -1,7 +1,7 @@
 {
-  "name": "awa-subaru-companion",
+  "name": "desktop-companion",
   "version": "0.1.0",
-  "description": "安和昴（Awa Subaru）桌面陪伴助手 — Live2D 桌面宠物 + hermes-agent 对话 + CosyVoice 语音 + 番茄钟/Todo/日记 + 思源笔记",
+  "description": "通用桌面伴侣 — Live2D 桌面宠物 + OpenAI 兼容对话 + TTS 语音 + 音乐播放器 + 番茄钟/待办/日记 + 思源笔记同步",
   "main": "./out/main/index.js",
   "author": "dorop",
   "license": "MIT",
@@ -38,8 +38,8 @@
     "vite": "^5.4.8"
   },
   "build": {
-    "appId": "com.dorop.awasubaru",
-    "productName": "AwaSubaruCompanion",
+    "appId": "com.dorop.desktopcompanion",
+    "productName": "DesktopCompanion",
     "directories": {
       "output": "release"
     },
@@ -69,7 +69,7 @@
     "nsis": {
       "oneClick": false,
       "allowToChangeInstallationDirectory": true,
-      "shortcutName": "安和昴陪伴"
+      "shortcutName": "桌面伴侣"
     }
   }
 }

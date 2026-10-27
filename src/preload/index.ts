@@ -1,6 +1,6 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import { IPC } from '../shared/constants'
-import type { AppConfig, ChatMessage, DeepPartial, DiaryEntry, ModelInfo, MusicInfo, SiyuanConfig, SiyuanNotebook, SiyuanSyncResult, TodoItem, TtsResult } from '../shared/types'
+import type { AppConfig, ChatMessage, DeepPartial, DiaryEntry, ModelActionsInfo, ModelInfo, MusicInfo, SiyuanConfig, SiyuanNotebook, SiyuanSyncResult, TodoItem, TtsResult } from '../shared/types'
 
 const api = {
   getConfig: (): Promise<AppConfig> => ipcRenderer.invoke(IPC.ConfigGet),
@@ -57,7 +57,9 @@ const api = {
   },
 
   models: {
-    list: (): Promise<ModelInfo[]> => ipcRenderer.invoke(IPC.ModelsList)
+    list: (): Promise<ModelInfo[]> => ipcRenderer.invoke(IPC.ModelsList),
+    actions: (model3Path: string): Promise<ModelActionsInfo> =>
+      ipcRenderer.invoke(IPC.ModelsActions, model3Path)
   },
 
   music: {

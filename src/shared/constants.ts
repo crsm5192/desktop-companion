@@ -4,6 +4,7 @@ export const IPC = {
   ConfigSet: 'config:set',
 
   ModelsList: 'models:list',
+  ModelsActions: 'models:actions',
   MusicList: 'music:list',
 
   ChatStream: 'chat:stream',

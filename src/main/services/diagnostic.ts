@@ -29,7 +29,7 @@ export function writeDiagnostic(): void {
     }
 
     const lines = [
-      '===== 安和昴 诊断日志 =====',
+      '===== 桌面伴侣 诊断日志 =====',
       `时间 = ${new Date().toISOString()}`,
       `isPackaged = ${app.isPackaged}`,
       `PORTABLE_EXECUTABLE_DIR = ${process.env.PORTABLE_EXECUTABLE_DIR ?? '(未设置)'}`,

@@ -1,11 +1,13 @@
 import { useEffect, useRef, useState } from 'react'
 import { useHermesChat } from '../../hooks/useHermesChat'
 import { useTTS } from '../../hooks/useTTS'
+import { useCharacter } from '../../hooks/useCharacter'
 import ChatBubble from './ChatBubble'
 
 export default function ChatPanel(): JSX.Element {
   const { messages, streaming, error, send, clear } = useHermesChat()
   const { speak, error: ttsError } = useTTS()
+  const ch = useCharacter()
   const [input, setInput] = useState('')
   const [voiceOn, setVoiceOn] = useState(true)
   const messagesEndRef = useRef<HTMLDivElement>(null)
@@ -26,7 +28,7 @@ export default function ChatPanel(): JSX.Element {
   return (
     <div className="panel chat-panel">
       <div className="panel-header">
-        <span>与昴对话</span>
+        <span>与{ch.shortName}对话</span>
         <span className="panel-header-actions">
           <label>
             <input
@@ -50,7 +52,7 @@ export default function ChatPanel(): JSX.Element {
             onSpeak={voiceOn ? () => void speak(m.speakText || m.content) : undefined}
           />
         ))}
-        {streaming && <div className="typing">昴正在输入…</div>}
+        {streaming && <div className="typing">{ch.shortName}正在输入…</div>}
         {error && <div className="error">{error}</div>}
         {ttsError && <div className="error">语音：{ttsError}</div>}
         <div ref={messagesEndRef} />
@@ -61,7 +63,7 @@ export default function ChatPanel(): JSX.Element {
           value={input}
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={(e) => e.key === 'Enter' && submit()}
-          placeholder="和昴说点什么…"
+          placeholder={`和${ch.shortName}说点什么…`}
         />
         <button onClick={submit} disabled={streaming}>
           发送

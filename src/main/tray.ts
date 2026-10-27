@@ -2,6 +2,7 @@ import { app, Menu, Tray, nativeImage } from 'electron'
 import { existsSync } from 'node:fs'
 import { join } from 'node:path'
 import { getMainWindow } from './window'
+import { getConfig } from './config'
 
 let tray: Tray | null = null
 let clickThrough = false
@@ -17,7 +18,7 @@ export function createTray(): void {
 
   const icon = nativeImage.createFromPath(iconPath)
   tray = new Tray(icon)
-  tray.setToolTip('安和昴陪伴')
+  tray.setToolTip(getConfig().character?.name || '桌面伴侣')
 
   const menu = Menu.buildFromTemplate([
     { label: '显示 / 隐藏', click: toggleWindow },

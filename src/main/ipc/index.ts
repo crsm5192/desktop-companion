@@ -6,7 +6,7 @@ import { getMainWindow, clampWindowPosition, setWindowPosition, applyFrameScale 
 import { streamChat } from '../services/hermes'
 import { synthesize } from '../services/tts'
 import { listNotebooks, syncDiary, syncTodoList, testConnection as siyuanTest } from '../services/siyuan'
-import { listModels } from '../services/models'
+import { discoverModelActions, listModels } from '../services/models'
 import { listMusic } from '../services/music'
 import { dbAddChat, dbAddTodo, dbClearChat, dbDeleteDiary, dbDeleteTodo, dbListChat, dbListDiary, dbListTodos, dbSaveDiary, dbUpdateTodo } from '../services/db'
 
@@ -25,6 +25,7 @@ export function registerIpc(): void {
 
   // ---------- 模型列表 ----------
   ipcMain.handle(IPC.ModelsList, () => listModels())
+  ipcMain.handle(IPC.ModelsActions, (_e, model3Path: string) => discoverModelActions(model3Path))
 
   // ---------- 音乐列表 ----------
   ipcMain.handle(IPC.MusicList, () => listMusic())

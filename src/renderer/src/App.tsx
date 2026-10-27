@@ -24,6 +24,14 @@ export default function App(): JSX.Element {
 
   const toggle = (p: NonNullable<typeof panel>): void => setPanel(panel === p ? null : p)
 
+  /** 模型复位：平移归零（回窗口正中）+ 缩放回 1×，并立即持久化 */
+  const resetModel = (): void => {
+    const s = usePetStore.getState()
+    s.setScale(1)
+    s.setOffset(0, 0)
+    void window.api.setConfig({ pet: { scale: 1, offsetX: 0, offsetY: 0 } })
+  }
+
   // 全局加载音乐（关闭面板也继续播）
   useEffect(() => {
     void loadMusic()
@@ -104,6 +112,7 @@ export default function App(): JSX.Element {
         <button title="番茄钟" onClick={() => toggle('pomodoro')}>🍅</button>
         <button title="待办" onClick={() => toggle('todo')}>✅</button>
         <button title="日记" onClick={() => toggle('diary')}>📖</button>
+        <button title="复位模型（回中心 + 1×）" onClick={resetModel}>⟲</button>
         <button title="设置" onClick={() => toggle('settings')}>⚙️</button>
       </div>
 
@@ -123,6 +132,9 @@ export default function App(): JSX.Element {
             }}
           />
           <span className="zoom-val">{scale.toFixed(2)}×</span>
+          <button className="zoom-reset" title="复位：回到中心 + 缩放 1×" onClick={resetModel}>
+            ⟲
+          </button>
         </div>
       )}
 

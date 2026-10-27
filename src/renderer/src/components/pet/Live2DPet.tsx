@@ -1,14 +1,22 @@
 import { useEffect, useRef, useState } from 'react'
 import { Application, Ticker } from 'pixi.js'
-import { Live2DSprite } from 'easy-live2d'
+import { CubismSetting, Live2DSprite, Priority } from 'easy-live2d'
 import { useSpeechStore } from '../../store/speech'
 import { usePetStore } from '../../store/pet'
+import type { ModelAction } from '@shared/types'
 
 interface Props {
   modelPath: string
   /** 整体不透明度 0.2~1（设置面板可调） */
   opacity: number
+  /** 模型可用按键（由主进程探测补全），用于渲染小按钮 */
+  actions?: { expressions: ModelAction[]; motions: ModelAction[] }
 }
+
+/** 供外部（按钮）触发的动作执行器，挂在 store 上避免层层传参 */
+export const live2dActionRef: {
+  current: ((a: ModelAction) => void) | null
+} = { current: null }
 
 function withTimeout<T>(p: Promise<T>, ms: number, msg: string): Promise<T> {
   return Promise.race([
@@ -52,7 +60,7 @@ function logWebGLInfo(): void {
   }
 }
 
-export default function Live2DPet({ modelPath, opacity }: Props): JSX.Element {
+export default function Live2DPet({ modelPath, opacity, actions }: Props): JSX.Element {
   const hostRef = useRef<HTMLDivElement>(null)
   const [status, setStatus] = useState('准备加载…')
 
@@ -91,7 +99,25 @@ export default function Live2DPet({ modelPath, opacity }: Props): JSX.Element {
         })
 
         setStatus('加载模型…')
-        const sprite = new Live2DSprite({ modelPath, ticker: Ticker.shared })
+        // 用主进程探测补全后的 modelJSON 构造设置，这样磁盘上有、但 model3.json 没声明的
+        // 表情/动作也能被 easy-live2d 识别（不同模型差异统一在这里抹平）
+        const dir = modelPath.includes('/') ? modelPath.slice(0, modelPath.lastIndexOf('/')) : ''
+        let setting: CubismSetting | undefined
+        try {
+          const info = await window.api.models.actions(modelPath)
+          if (info.modelJSON) {
+            setting = new CubismSetting({
+              modelJSON: info.modelJSON as any,
+              prefixPath: dir ? `${dir}/` : ''
+            })
+          }
+        } catch {
+          setting = undefined // 探测失败就退回默认解析
+        }
+
+        const sprite = new Live2DSprite(
+          setting ? { modelSetting: setting, ticker: Ticker.shared } : { modelPath, ticker: Ticker.shared }
+        )
         sprite.renderable = true // easy-live2d 默认 renderable=false，显式打开确保渲染
         // 关键：必须先加入舞台，渲染时才触发模型加载（renderFrame → initModel）
         app.stage.addChild(sprite)
@@ -163,8 +189,68 @@ export default function Live2DPet({ modelPath, opacity }: Props): JSX.Element {
           for (const name of ['Paramheadxy', 'Paramheadxy2', 'Paramheadxy3', 'Paramheadxy4', 'Paramheadxy5', 'Paramheadxy6', 'Paramheadxy7', 'Paramheadxy8', 'Paramheadxy9']) {
             sprite.setParameterValueById(name, 30)
           }
+          // 隐藏模型自带的水印/署名（初音 miku：Param137=「水印」开关，VTS 里按小键盘 1 就是切它）。
+          // 实测：Param137=1 时水印部件 Part18 的网格全部被隐藏，=0 时显示，所以这里强制置 1。
+          // 模型没有该参数时是空操作。
+          for (const name of ['Param137']) {
+            sprite.setParameterValueById(name, 1)
+          }
         }
         app.ticker.add(applyTransform)
+
+        // 暴露动作执行器：UI 按钮点一下 → 播对应表情/动作
+        live2dActionRef.current = (a: ModelAction): void => {
+          try {
+            if (a.kind === 'expression') {
+              const list = sprite.getExpressions()
+              const hit = list.find((e) => e.name === a.name)
+              if (hit) {
+                sprite.setExpression({ expressionId: hit.name })
+                return
+              }
+              // 名字对不上时按序号兜底
+              const idx = actions?.expressions.findIndex((x) => x.name === a.name) ?? -1
+              if (idx >= 0) sprite.setExpression({ index: idx })
+            } else if (a.group !== undefined && a.index !== undefined) {
+              void sprite.startMotion({
+                group: a.group,
+                no: a.index,
+                priority: Priority.Normal
+              })
+            }
+          } catch (e) {
+            console.warn('[live2d] 动作执行失败', a, e)
+          }
+        }
+
+        // 调试钩子：便于排查「按钮点了没反应」这类问题（生产环境无害）
+        ;(window as any).__l2dDebug = {
+          get expressions(): string[] {
+            try {
+              return sprite.getExpressions().map((e) => e.name)
+            } catch {
+              return []
+            }
+          },
+          /** 画布像素指纹：用于验证表情/动作是否真的改变了渲染结果 */
+          get frameHash(): number {
+            try {
+              const cv = canvas
+              if (!cv) return -1
+              const g = cv.getContext('webgl2') ?? cv.getContext('webgl')
+              if (!g) return -1
+              const w = Math.min(120, cv.width)
+              const h = Math.min(120, cv.height)
+              const px = new Uint8Array(w * h * 4)
+              g.readPixels(0, 0, w, h, g.RGBA, g.UNSIGNED_BYTE, px)
+              let sum = 0
+              for (let i = 0; i < px.length; i += 4) sum += px[i] * 3 + px[i + 1] * 5 + px[i + 2] * 7 + px[i + 3] * 11
+              return sum
+            } catch {
+              return -1
+            }
+          }
+        }
 
         // 锁定模式下：右键拖动 → 平移模型（调整显示哪一部分）
         let dragging = false
@@ -214,6 +300,7 @@ export default function Live2DPet({ modelPath, opacity }: Props): JSX.Element {
 
     return () => {
       cancelled = true
+      live2dActionRef.current = null
       cleanupListeners?.()
       if (app) {
         try {
