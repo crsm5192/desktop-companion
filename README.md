@@ -135,7 +135,7 @@ npm run build:win:nsis       # NSIS 安装版（启动快）
 npm run build:win            # 两者都出
 ```
 
-产物在 `release/`：`DesktopCompanion 0.1.0.exe`（便携）+ `DesktopCompanion Setup 0.1.0.exe`（安装）+ `models\` + `music\`。
+产物在 `release/`：`DesktopCompanion 0.2.0.exe`（便携）+ `DesktopCompanion Setup 0.2.0.exe`（安装）+ `models\` + `music\`。
 
 打包注意事项：
 - 若 electron 下载超时，用 `ELECTRON_MIRROR` 镜像（见「快速开始」）；
@@ -163,8 +163,8 @@ npm run build:win            # 两者都出
 
 | 版本 | 说明 |
 |---|---|
-| **[便携版](https://github.com/crsm5192/desktop-companion/releases/latest/download/DesktopCompanion.0.1.0.exe)** | 免安装，解压即用；模型/音乐/配置/数据都在 exe 旁边，可整个文件夹带走 |
-| **[安装版](https://github.com/crsm5192/desktop-companion/releases/latest/download/DesktopCompanion.Setup.0.1.0.exe)** | NSIS 安装包，启动更快；数据存在 `%APPDATA%\DesktopCompanion\`，覆盖安装不清空 |
+| **[便携版](https://github.com/crsm5192/desktop-companion/releases/latest/download/DesktopCompanion.0.2.0.exe)** | 免安装，解压即用；模型/音乐/配置/数据都在 exe 旁边，可整个文件夹带走 |
+| **[安装版](https://github.com/crsm5192/desktop-companion/releases/latest/download/DesktopCompanion.Setup.0.2.0.exe)** | NSIS 安装包，启动更快；数据存在 `%APPDATA%\DesktopCompanion\`，覆盖安装不清空 |
 
 > 全部版本见 **[Releases](https://github.com/crsm5192/desktop-companion/releases)**。
 > 模型与音乐因版权不随包分发，需自行放入数据目录（见上文「数据存放位置」）。
