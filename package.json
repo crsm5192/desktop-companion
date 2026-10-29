@@ -1,6 +1,6 @@
 {
   "name": "desktop-companion",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "通用桌面伴侣 — Live2D 桌面宠物 + OpenAI 兼容对话 + TTS 语音 + 音乐播放器 + 番茄钟/待办/日记 + 思源笔记同步",
   "main": "./out/main/index.js",
   "author": "dorop",
