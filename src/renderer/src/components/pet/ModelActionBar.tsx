@@ -8,19 +8,15 @@ interface Props {
 }
 
 /**
- * 模型自带的「按键」（表情 / 动作）。
+ * 模型自带的「按键」（表情 / 动作）—— 与工具栏其他按钮同级的一个按钮 🎭。
  *
- * 交互：平时屏幕上只有一个主按钮 🎭，**默认不展开**，点一下才弹出面板，
- * 再点一下（或点面板外）收起。这样按钮不会一直占着桌面。
- *
- * 不同模型差异由主进程探测抹平（未声明的 exp3/motion3 会补进内存声明），
- * 这里只负责展示。模型两种按键都没有时整个控件不渲染。
+ * 点击后在按钮上方弹出面板；默认收起，点面板外或 Esc 收起。
+ * 模型没有任何表情/动作时整个按钮不渲染。
  */
 export default function ModelActionBar({ expressions, motions }: Props): JSX.Element | null {
   const [open, setOpen] = useState(false)
   const rootRef = useRef<HTMLDivElement>(null)
 
-  // 点面板外部 / 按 Esc 收起
   useEffect(() => {
     if (!open) return
     const onDown = (e: MouseEvent): void => {
@@ -44,9 +40,9 @@ export default function ModelActionBar({ expressions, motions }: Props): JSX.Ele
   }
 
   return (
-    <div className={`model-actions ${open ? 'is-open' : ''}`} ref={rootRef}>
+    <div className="model-actions" ref={rootRef}>
       <button
-        className="model-actions-toggle"
+        className={`model-actions-toggle ${open ? 'active' : ''}`}
         title={open ? '收起表情' : `表情与动作（${expressions.length + motions.length}）`}
         onClick={() => setOpen((v) => !v)}
       >

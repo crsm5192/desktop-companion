@@ -35,7 +35,11 @@ const DEFAULT_CONFIG: AppConfig = {
       voice: 'jp',
       style: '',
       token: '',
-      timeoutMs: 120000
+      timeoutMs: 120000,
+      /** 服务端要求的语言，留空 = 不做适配（原样发送） */
+      lang: 'jp',
+      langAdapt: 'simplify',
+      autoRetryOnLangError: true
     }
   },
   siyuan: {

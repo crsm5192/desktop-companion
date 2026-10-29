@@ -49,6 +49,22 @@ export interface TtsServerConfig {
   token: string
   /** 请求超时（毫秒），语音合成可能较慢，默认给足 */
   timeoutMs: number
+  /**
+   * 服务端要求的语言（可留空 = 不做语言适配，原样发送）。
+   * 很多 CosyVoice 部署只挂一种语言的 LoRA，收到别的语言会直接 400。
+   * 填了它，客户端就会把文本朝这个语言做适配（见 `langAdapt`）。
+   * 常见值：`jp` / `zh` / `en`
+   */
+  lang: string
+  /**
+   * 语言适配策略（当 `lang` 非空且文本不是该语言时生效）：
+   *  - `off`      ：不做处理，原样发送（服务端可能报错）
+   *  - `simplify` ：只把简体字换成该语言可接受的字形（默认，轻量、不改语义）
+   *  - `kana`     ：把文本转成日语假名读音（仅 lang=jp 有意义）
+   */
+  langAdapt: 'off' | 'simplify' | 'kana'
+  /** 是否在服务返回「语言不支持」时自动重试一次（用 simplify 适配后再发） */
+  autoRetryOnLangError: boolean
 }
 
 export interface TtsConfig {
@@ -60,9 +76,11 @@ export interface TtsConfig {
   script: string
   /** 子进程工作目录 */
   cwd: string
-  /** auto=按是否含假名自动判断，zh/jp 强制 */
+  /** command 模式用：auto=按是否含假名自动判断，zh/jp 强制 */
   lang: 'auto' | 'zh' | 'jp'
+  /** 语速倍率 */
   speed: number
+  /** command 模式超时 */
   timeoutMs: number
   server: TtsServerConfig
 }

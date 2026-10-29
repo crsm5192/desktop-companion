@@ -2,7 +2,9 @@ import { useEffect } from 'react'
 import { useUIStore } from './store/ui'
 import { usePetStore } from './store/pet'
 import { useMusicStore } from './store/music'
+import { useModelActionsStore } from './store/modelActions'
 import PetStage from './components/pet/PetStage'
+import ModelActionBar from './components/pet/ModelActionBar'
 import SpeechBubble from './components/pet/SpeechBubble'
 import ChatPanel from './components/chat/ChatPanel'
 import MusicPanel from './components/music/MusicPanel'
@@ -21,6 +23,8 @@ export default function App(): JSX.Element {
   const musicIndex = useMusicStore((s) => s.index)
   const musicSongs = useMusicStore((s) => s.songs)
   const loadMusic = useMusicStore((s) => s.loadSongs)
+  const modelExpressions = useModelActionsStore((s) => s.expressions)
+  const modelMotions = useModelActionsStore((s) => s.motions)
 
   const toggle = (p: NonNullable<typeof panel>): void => setPanel(panel === p ? null : p)
 
@@ -112,6 +116,8 @@ export default function App(): JSX.Element {
         <button title="番茄钟" onClick={() => toggle('pomodoro')}>🍅</button>
         <button title="待办" onClick={() => toggle('todo')}>✅</button>
         <button title="日记" onClick={() => toggle('diary')}>📖</button>
+        {/* 模型表情/动作：与其它按钮同级，随时可用（不再依赖锁定模式） */}
+        <ModelActionBar expressions={modelExpressions} motions={modelMotions} />
         <button title="复位模型（回中心 + 1×）" onClick={resetModel}>⟲</button>
         <button title="设置" onClick={() => toggle('settings')}>⚙️</button>
       </div>

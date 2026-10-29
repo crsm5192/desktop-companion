@@ -3,6 +3,7 @@ import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'no
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { TtsConfig, TtsResult } from '../../shared/types'
+import { adaptForTts, isLangError } from './ttsLang'
 
 /**
  * 语音合成。
@@ -83,62 +84,96 @@ async function synthesizeServer(cfg: TtsConfig, text: string): Promise<TtsResult
   const s = cfg.server
   const base = (s.baseUrl || 'http://127.0.0.1:8001').replace(/\/+$/, '')
   const style = (s.apiStyle || 'openai') as 'openai' | 'legacy'
+  const targetLang = (s.lang || '').trim()
+  const adaptMode = s.langAdapt || 'simplify'
 
-  const openaiBody: Record<string, unknown> = {
-    input: text,
-    voice: s.voice || 'jp',
-    speed: cfg.speed,
-    response_format: 'wav'
+  /** 按给定文本发一次请求；返回音频 Buffer 或抛出带 status 的错误 */
+  const attempt = async (input: string): Promise<Buffer> => {
+    const openaiBody: Record<string, unknown> = {
+      input,
+      voice: s.voice || undefined,
+      speed: cfg.speed,
+      response_format: 'wav'
+    }
+    if (!s.voice) delete openaiBody.voice
+    // style 是可选扩展字段：只在填了才发，避免严格实现因未知字段报错
+    if (s.style) openaiBody.style = s.style
+
+    const url = style === 'legacy' ? `${base}/tts` : `${base}/v1/audio/speech`
+    const body: Record<string, unknown> =
+      style === 'legacy' ? { text: input, lang: cfg.lang, speed: cfg.speed } : openaiBody
+
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+    if (s.token) headers.Authorization = `Bearer ${s.token}`
+
+    const timeoutMs = s.timeoutMs && s.timeoutMs > 0 ? s.timeoutMs : 120000
+    const ctrl = new AbortController()
+    const timer = setTimeout(() => ctrl.abort(), timeoutMs)
+
+    console.log(
+      `[tts] server(${style}) POST ${url} len=${input.length}` +
+        `${s.style ? ` style=${s.style}` : ''}${targetLang ? ` targetLang=${targetLang}` : ''}`
+    )
+
+    try {
+      const res = await fetch(url, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify(body),
+        signal: ctrl.signal
+      })
+
+      if (!res.ok) {
+        const err = await res.text().catch(() => '')
+        const e = new Error(
+          `语音服务返回 ${res.status}：${err.slice(0, 300)}（${url}，接口风格=${style}）`
+        ) as Error & { status?: number; body?: string }
+        e.status = res.status
+        e.body = err
+        throw e
+      }
+
+      const buf = Buffer.from(await res.arrayBuffer())
+      if (buf.length < 200) {
+        throw new Error(
+          `语音服务只返回了 ${buf.length} 字节，疑似空音频。请检查服务端模型/参数。`
+        )
+      }
+      return buf
+    } catch (e) {
+      if (e instanceof Error && e.name === 'AbortError') {
+        throw new Error(`语音服务超时（timeoutMs）`)
+      }
+      throw e
+    } finally {
+      clearTimeout(timer)
+    }
   }
-  // style 是可选扩展字段：只在填了才发，避免严格实现因未知字段报错
-  if (s.style) openaiBody.style = s.style
 
-  const url = style === 'legacy' ? `${base}/tts` : `${base}/v1/audio/speech`
-  const body: Record<string, unknown> =
-    style === 'legacy' ? { text, lang: cfg.lang, speed: cfg.speed } : openaiBody
-
-  const headers: Record<string, string> = { 'Content-Type': 'application/json' }
-  if (s.token) headers.Authorization = `Bearer ${s.token}`
-
-  const timeoutMs = s.timeoutMs && s.timeoutMs > 0 ? s.timeoutMs : 120000
-  const ctrl = new AbortController()
-  const timer = setTimeout(() => ctrl.abort(), timeoutMs)
-
-  console.log(
-    `[tts] server(${style}) POST ${url} len=${text.length}${s.style ? ` style=${s.style}` : ''}`
-  )
+  const first = adaptForTts(text, targetLang, adaptMode)
 
   try {
-    const res = await fetch(url, {
-      method: 'POST',
-      headers,
-      body: JSON.stringify(body),
-      signal: ctrl.signal
-    })
-
-    if (!res.ok) {
-      const err = await res.text().catch(() => '')
-      throw new Error(
-        `语音服务返回 ${res.status}：${err.slice(0, 300)}（${url}，接口风格=${style}）`
-      )
-    }
-
-    const buf = Buffer.from(await res.arrayBuffer())
-    if (buf.length < 200) {
-      throw new Error(
-        `语音服务只返回了 ${buf.length} 字节，疑似空音频。请检查服务端模型/参数。`
-      )
-    }
+    const buf = await attempt(first)
     const mime = sniffMime(buf)
     console.log(`[tts] server 返回 ${buf.length} bytes, mime=${mime}`)
     return { mime, base64: buf.toString('base64') }
   } catch (e) {
-    if (e instanceof Error && e.name === 'AbortError') {
-      throw new Error(`语音服务超时（${timeoutMs}ms）：${url}`)
-    }
-    throw e
-  } finally {
-    clearTimeout(timer)
+    const err = e as Error & { status?: number; body?: string }
+    // 语言类错误 + 允许自动重试 + 首次没适配过 → 用「字形简化」再试一次
+    const canRetry =
+      s.autoRetryOnLangError !== false &&
+      err.status !== undefined &&
+      isLangError(err.status, err.body ?? '') &&
+      first === text
+
+    if (!canRetry) throw err
+    const second = adaptForTts(text, targetLang || 'jp', 'simplify')
+    if (second === text) throw err // 适配后没变化，重试也没意义
+    console.warn('[tts] 服务端报告语言不支持，已自动适配后重试一次')
+    const buf = await attempt(second)
+    const mime = sniffMime(buf)
+    console.log(`[tts] server 重试成功 ${buf.length} bytes, mime=${mime}`)
+    return { mime, base64: buf.toString('base64') }
   }
 }
 

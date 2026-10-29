@@ -81,7 +81,8 @@ export default function SettingsPanel(): JSX.Element {
   const testTts = async (): Promise<void> => {
     setTtsStatus('合成中（首次约 10~30 秒，请稍候）…')
     try {
-      const r = await window.api.tts.speak(`测试语音，你好，我是${cfg.character.shortName}。`)
+      // 用日语测试句：很多 CosyVoice 服务只支持日语，发中文会被服务端拒绝
+      const r = await window.api.tts.speak('テストです。こんにちは、聞こえますか？')
       const audio = new Audio(`data:${r.mime};base64,${r.base64}`)
       await audio.play()
       setTtsStatus('成功，已播放')
@@ -234,6 +235,54 @@ export default function SettingsPanel(): JSX.Element {
                   })
                 }
               />
+            </label>
+            <label>
+              服务端语言（留空=不限制）
+              <input
+                value={cfg.tts.server.lang}
+                placeholder="如 jp / zh / en；留空则不干预"
+                onChange={(e) =>
+                  patch({
+                    tts: { ...cfg.tts, server: { ...cfg.tts.server, lang: e.target.value } }
+                  })
+                }
+              />
+            </label>
+            <label>
+              语言适配策略
+              <select
+                value={cfg.tts.server.langAdapt}
+                onChange={(e) =>
+                  patch({
+                    tts: {
+                      ...cfg.tts,
+                      server: {
+                        ...cfg.tts.server,
+                        langAdapt: e.target.value as AppConfig['tts']['server']['langAdapt']
+                      }
+                    }
+                  })
+                }
+              >
+                <option value="simplify">simplify（只换字形，不改语义）</option>
+                <option value="kana">kana（转假名读音，仅日语）</option>
+                <option value="off">off（原样发送）</option>
+              </select>
+            </label>
+            <label className="row">
+              <input
+                type="checkbox"
+                checked={cfg.tts.server.autoRetryOnLangError}
+                onChange={(e) =>
+                  patch({
+                    tts: {
+                      ...cfg.tts,
+                      server: { ...cfg.tts.server, autoRetryOnLangError: e.target.checked }
+                    }
+                  })
+                }
+              />
+              服务端报「语言不支持」时自动适配并重试一次
             </label>
             <div className="settings-row">
               <button onClick={() => void probeTtsServer()}>测试连接</button>
