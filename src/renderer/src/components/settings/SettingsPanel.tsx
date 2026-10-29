@@ -58,6 +58,26 @@ export default function SettingsPanel(): JSX.Element {
     })
   }
 
+  /** 测试连接：先 /health，再实际合成一句（用当前面板里的配置，不必先保存） */
+  const probeTtsServer = async (): Promise<void> => {
+    setTtsStatus('检测服务…')
+    try {
+      const h = await window.api.tts.probe(cfg.tts)
+      if (!h.ok) {
+        setTtsStatus(`连接失败：${h.error ?? '未知错误'}`)
+        return
+      }
+      const styles = h.styles?.length ? `，风格 ${h.styles.length} 种` : ''
+      setTtsStatus(`服务在线（${h.device ?? '?'}${styles}），正在合成测试…`)
+      const r = await window.api.tts.speak(`テスト、聞こえる`)
+      const audio = new Audio(`data:${r.mime};base64,${r.base64}`)
+      await audio.play()
+      setTtsStatus(`✅ 服务在线（${h.device ?? '?'}）且合成成功，已播放`)
+    } catch (e) {
+      setTtsStatus(`失败：${e instanceof Error ? e.message : String(e)}`)
+    }
+  }
+
   const testTts = async (): Promise<void> => {
     setTtsStatus('合成中（首次约 10~30 秒，请稍候）…')
     try {
@@ -131,7 +151,7 @@ export default function SettingsPanel(): JSX.Element {
       </fieldset>
 
       <fieldset>
-        <legend>TTS（CosyVoice）</legend>
+        <legend>TTS（语音合成）</legend>
         <label>
           模式
           <select
@@ -140,51 +160,134 @@ export default function SettingsPanel(): JSX.Element {
               patch({ tts: { ...cfg.tts, mode: e.target.value as AppConfig['tts']['mode'] } })
             }
           >
-            <option value="server">server（常驻服务）</option>
-            <option value="command">command（每句 CLI，备用）</option>
+            <option value="server">server（常驻/远端服务，推荐）</option>
+            <option value="command">command（每句调本地脚本，备用）</option>
           </select>
         </label>
+
         {cfg.tts.mode === 'server' && (
-          <label>
-            服务地址
-            <input
-              value={cfg.tts.server.baseUrl}
-              onChange={(e) =>
-                patch({
-                  tts: { ...cfg.tts, server: { ...cfg.tts.server, baseUrl: e.target.value } }
-                })
-              }
-            />
-          </label>
+          <>
+            <label>
+              服务地址
+              <input
+                value={cfg.tts.server.baseUrl}
+                placeholder="http://10.147.18.250:8001"
+                onChange={(e) =>
+                  patch({
+                    tts: { ...cfg.tts, server: { ...cfg.tts.server, baseUrl: e.target.value } }
+                  })
+                }
+              />
+            </label>
+            <label>
+              接口风格
+              <select
+                value={cfg.tts.server.apiStyle}
+                onChange={(e) =>
+                  patch({
+                    tts: {
+                      ...cfg.tts,
+                      server: {
+                        ...cfg.tts.server,
+                        apiStyle: e.target.value as AppConfig['tts']['server']['apiStyle']
+                      }
+                    }
+                  })
+                }
+              >
+                <option value="openai">openai（/v1/audio/speech）</option>
+                <option value="legacy">legacy（/tts）</option>
+              </select>
+            </label>
+            <label>
+              voice（音色/说话人字段）
+              <input
+                value={cfg.tts.server.voice}
+                placeholder="jp"
+                onChange={(e) =>
+                  patch({
+                    tts: { ...cfg.tts, server: { ...cfg.tts.server, voice: e.target.value } }
+                  })
+                }
+              />
+            </label>
+            <label>
+              情绪风格（可选）
+              <input
+                value={cfg.tts.server.style}
+                placeholder="留空=不指定；如 amai / excited / sasayaku"
+                onChange={(e) =>
+                  patch({
+                    tts: { ...cfg.tts, server: { ...cfg.tts.server, style: e.target.value } }
+                  })
+                }
+              />
+            </label>
+            <label>
+              Token（可选，留空不鉴权）
+              <input
+                type="password"
+                value={cfg.tts.server.token}
+                onChange={(e) =>
+                  patch({
+                    tts: { ...cfg.tts, server: { ...cfg.tts.server, token: e.target.value } }
+                  })
+                }
+              />
+            </label>
+            <div className="settings-row">
+              <button onClick={() => void probeTtsServer()}>测试连接</button>
+              <span className="settings-hint">先查 /health，再实际合成一句</span>
+            </div>
+          </>
         )}
-        <label>
-          Python
+
+        {cfg.tts.mode === 'command' && (
+          <>
+            <label>
+              Python
+              <input
+                value={cfg.tts.python}
+                onChange={(e) => patch({ tts: { ...cfg.tts, python: e.target.value } })}
+              />
+            </label>
+            <label>
+              脚本（语音合成脚本路径）
+              <input
+                value={cfg.tts.script}
+                onChange={(e) => patch({ tts: { ...cfg.tts, script: e.target.value } })}
+              />
+            </label>
+            <label>
+              语言
+              <select
+                value={cfg.tts.lang}
+                onChange={(e) =>
+                  patch({ tts: { ...cfg.tts, lang: e.target.value as AppConfig['tts']['lang'] } })
+                }
+              >
+                <option value="auto">auto（按假名自动）</option>
+                <option value="zh">zh</option>
+                <option value="jp">jp</option>
+              </select>
+            </label>
+          </>
+        )}
+
+        <label className="row">
+          <span>语速</span>
           <input
-            value={cfg.tts.python}
-            onChange={(e) => patch({ tts: { ...cfg.tts, python: e.target.value } })}
+            type="range"
+            min={0.5}
+            max={2}
+            step={0.05}
+            value={cfg.tts.speed}
+            onChange={(e) => patch({ tts: { ...cfg.tts, speed: Number(e.target.value) } })}
           />
+          <span>{cfg.tts.speed.toFixed(2)}×</span>
         </label>
-        <label>
-          脚本（语音合成脚本路径）
-          <input
-            value={cfg.tts.script}
-            onChange={(e) => patch({ tts: { ...cfg.tts, script: e.target.value } })}
-          />
-        </label>
-        <label>
-          语言
-          <select
-            value={cfg.tts.lang}
-            onChange={(e) =>
-              patch({ tts: { ...cfg.tts, lang: e.target.value as AppConfig['tts']['lang'] } })
-            }
-          >
-            <option value="auto">auto（按假名自动）</option>
-            <option value="zh">zh</option>
-            <option value="jp">jp</option>
-          </select>
-        </label>
-        <button onClick={() => void testTts()}>测试语音</button>
+
+        <button onClick={() => void testTts()}>试听一句</button>
         {ttsStatus && <div className="siyuan-status">{ttsStatus}</div>}
       </fieldset>
 

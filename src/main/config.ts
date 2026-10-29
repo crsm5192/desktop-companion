@@ -29,7 +29,14 @@ const DEFAULT_CONFIG: AppConfig = {
     lang: 'auto',
     speed: 1.0,
     timeoutMs: 300000,
-    server: { baseUrl: 'http://127.0.0.1:8001', voice: 'default' }
+    server: {
+      baseUrl: 'http://127.0.0.1:8001',
+      apiStyle: 'openai',
+      voice: 'jp',
+      style: '',
+      token: '',
+      timeoutMs: 120000
+    }
   },
   siyuan: {
     baseUrl: 'http://127.0.0.1:6806',

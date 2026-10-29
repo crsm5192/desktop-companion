@@ -16,6 +16,7 @@ export const IPC = {
   ChatHistoryClear: 'chat:history:clear',
 
   TtsSpeak: 'tts:speak',
+  TtsProbe: 'tts:probe',
 
   TodoList: 'todo:list',
   TodoAdd: 'todo:add',

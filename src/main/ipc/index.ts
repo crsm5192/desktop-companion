@@ -1,10 +1,10 @@
 import { Notification, ipcMain, screen } from 'electron'
 import { IPC } from '../../shared/constants'
-import type { AppConfig, ChatMessage, DeepPartial, DiaryEntry, SiyuanConfig, TodoItem } from '../../shared/types'
+import type { AppConfig, ChatMessage, DeepPartial, DiaryEntry, SiyuanConfig, TodoItem, TtsConfig } from '../../shared/types'
 import { getConfig, setConfig } from '../config'
 import { getMainWindow, clampWindowPosition, setWindowPosition, applyFrameScale } from '../window'
 import { streamChat } from '../services/llm'
-import { synthesize } from '../services/tts'
+import { probeServer, synthesize } from '../services/tts'
 import { listNotebooks, syncDiary, syncTodoList, testConnection as siyuanTest } from '../services/siyuan'
 import { discoverModelActions, listModels } from '../services/models'
 import { listMusic } from '../services/music'
@@ -79,6 +79,8 @@ export function registerIpc(): void {
 
   // ---------- TTS ----------
   ipcMain.handle(IPC.TtsSpeak, (_e, text: string) => synthesize(getConfig().tts, text))
+  // 测试连接：允许传入临时配置（设置面板里改了地址还没保存也能测）
+  ipcMain.handle(IPC.TtsProbe, (_e, cfg?: TtsConfig) => probeServer(cfg ?? getConfig().tts))
 
   // ---------- Todo ----------
   ipcMain.handle(IPC.TodoList, () => dbListTodos())

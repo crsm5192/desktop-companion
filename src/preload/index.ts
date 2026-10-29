@@ -1,6 +1,6 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import { IPC } from '../shared/constants'
-import type { AppConfig, ChatMessage, DeepPartial, DiaryEntry, ModelActionsInfo, ModelInfo, MusicInfo, SiyuanConfig, SiyuanNotebook, SiyuanSyncResult, TodoItem, TtsResult } from '../shared/types'
+import type { AppConfig, ChatMessage, DeepPartial, DiaryEntry, ModelActionsInfo, ModelInfo, MusicInfo, SiyuanConfig, SiyuanNotebook, SiyuanSyncResult, TodoItem, TtsConfig, TtsResult } from '../shared/types'
 
 const api = {
   getConfig: (): Promise<AppConfig> => ipcRenderer.invoke(IPC.ConfigGet),
@@ -33,7 +33,12 @@ const api = {
   },
 
   tts: {
-    speak: (text: string): Promise<TtsResult> => ipcRenderer.invoke(IPC.TtsSpeak, text)
+    speak: (text: string): Promise<TtsResult> => ipcRenderer.invoke(IPC.TtsSpeak, text),
+    /** 测试语音服务连通性（可传当前面板里的临时配置） */
+    probe: (
+      cfg?: TtsConfig
+    ): Promise<{ ok: boolean; device?: string; styles?: string[]; error?: string }> =>
+      ipcRenderer.invoke(IPC.TtsProbe, cfg)
   },
 
   todo: {

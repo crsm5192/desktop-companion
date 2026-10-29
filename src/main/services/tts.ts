@@ -63,19 +63,101 @@ async function synthesizeCommand(cfg: TtsConfig, text: string): Promise<TtsResul
   }
 }
 
+/** 嗅探响应实际是什么格式（远端可能忽略 response_format） */
+function sniffMime(buf: Buffer): string {
+  if (buf.length >= 12 && buf.toString('ascii', 0, 4) === 'RIFF') return 'audio/wav'
+  if (buf.length >= 3 && buf.toString('ascii', 0, 3) === 'ID3') return 'audio/mpeg'
+  if (buf.length >= 2 && buf[0] === 0xff && (buf[1] & 0xe0) === 0xe0) return 'audio/mpeg'
+  if (buf.length >= 8 && buf.toString('ascii', 4, 8) === 'ftyp') return 'audio/mp4'
+  if (buf.length >= 4 && buf.toString('ascii', 0, 4) === 'OggS') return 'audio/ogg'
+  return 'audio/wav'
+}
+
+/**
+ * 调常驻语音服务合成。支持两种接口风格（由 `server.apiStyle` 决定）：
+ *  - `openai`：POST {base}/v1/audio/speech  { input, voice, style?, speed?, response_format }
+ *  - `legacy`：POST {base}/tts              { text, lang, speed }
+ * `server.token` 非空时带 Authorization: Bearer。
+ */
 async function synthesizeServer(cfg: TtsConfig, text: string): Promise<TtsResult> {
-  const base = (cfg.server.baseUrl || 'http://127.0.0.1:8001').replace(/\/+$/, '')
-  const res = await fetch(`${base}/tts`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ text, lang: cfg.lang, speed: cfg.speed })
-  })
-  if (!res.ok) {
-    const err = await res.text().catch(() => '')
-    throw new Error(
-      `TTS 服务返回 ${res.status}：${err.slice(0, 300)}。请先启动你的 TTS 服务（或用 command 模式）`
-    )
+  const s = cfg.server
+  const base = (s.baseUrl || 'http://127.0.0.1:8001').replace(/\/+$/, '')
+  const style = (s.apiStyle || 'openai') as 'openai' | 'legacy'
+
+  const openaiBody: Record<string, unknown> = {
+    input: text,
+    voice: s.voice || 'jp',
+    speed: cfg.speed,
+    response_format: 'wav'
   }
-  const buf = Buffer.from(await res.arrayBuffer())
-  return { mime: 'audio/wav', base64: buf.toString('base64') }
+  // style 是可选扩展字段：只在填了才发，避免严格实现因未知字段报错
+  if (s.style) openaiBody.style = s.style
+
+  const url = style === 'legacy' ? `${base}/tts` : `${base}/v1/audio/speech`
+  const body: Record<string, unknown> =
+    style === 'legacy' ? { text, lang: cfg.lang, speed: cfg.speed } : openaiBody
+
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+  if (s.token) headers.Authorization = `Bearer ${s.token}`
+
+  const timeoutMs = s.timeoutMs && s.timeoutMs > 0 ? s.timeoutMs : 120000
+  const ctrl = new AbortController()
+  const timer = setTimeout(() => ctrl.abort(), timeoutMs)
+
+  console.log(
+    `[tts] server(${style}) POST ${url} len=${text.length}${s.style ? ` style=${s.style}` : ''}`
+  )
+
+  try {
+    const res = await fetch(url, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(body),
+      signal: ctrl.signal
+    })
+
+    if (!res.ok) {
+      const err = await res.text().catch(() => '')
+      throw new Error(
+        `语音服务返回 ${res.status}：${err.slice(0, 300)}（${url}，接口风格=${style}）`
+      )
+    }
+
+    const buf = Buffer.from(await res.arrayBuffer())
+    if (buf.length < 200) {
+      throw new Error(
+        `语音服务只返回了 ${buf.length} 字节，疑似空音频。请检查服务端模型/参数。`
+      )
+    }
+    const mime = sniffMime(buf)
+    console.log(`[tts] server 返回 ${buf.length} bytes, mime=${mime}`)
+    return { mime, base64: buf.toString('base64') }
+  } catch (e) {
+    if (e instanceof Error && e.name === 'AbortError') {
+      throw new Error(`语音服务超时（${timeoutMs}ms）：${url}`)
+    }
+    throw e
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
+/** 探测语音服务可用性（设置面板「测试连接」用）：GET {base}/health */
+export async function probeServer(
+  cfg: TtsConfig
+): Promise<{ ok: boolean; device?: string; styles?: string[]; error?: string }> {
+  const base = (cfg.server.baseUrl || '').replace(/\/+$/, '')
+  if (!base) return { ok: false, error: '未填写服务地址' }
+  const ctrl = new AbortController()
+  const timer = setTimeout(() => ctrl.abort(), 10000)
+  try {
+    const res = await fetch(`${base}/health`, { signal: ctrl.signal })
+    if (!res.ok) return { ok: false, error: `HTTP ${res.status}` }
+    const j = (await res.json()) as { ok?: boolean; device?: string; styles?: string[] }
+    return { ok: j.ok !== false, device: j.device, styles: j.styles }
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : String(e) }
+  } finally {
+    clearTimeout(timer)
+  }
 }

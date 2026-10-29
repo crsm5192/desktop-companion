@@ -30,10 +30,25 @@ export interface LlmConfig {
   model: string
 }
 
+/**
+ * 常驻语音服务（server 模式）的连接配置。
+ * 不同实现的接口字段不一样，这里用 `apiStyle` 区分：
+ *  - `openai`  ：POST {baseUrl}/v1/audio/speech，body {input, voice, style?, speed?, response_format}
+ *  - `legacy`  ：POST {baseUrl}/tts，body {text, lang, speed}（早期版本用的简单接口）
+ */
 export interface TtsServerConfig {
-  /** 未来「常驻 TTS 服务」模式的地址（当前用 command 模式，可留空） */
+  /** 服务地址，例如 http://10.147.18.250:8001（不要带尾部斜杠，会自动去掉） */
   baseUrl: string
+  /** 接口风格 */
+  apiStyle: 'openai' | 'legacy'
+  /** openai 风格：voice 字段（多数实现里等价于"说话人/音色"，部分服务当风格用） */
   voice: string
+  /** openai 风格：可选的情绪/风格名（如 amai / excited / whisper），留空则不发送 */
+  style: string
+  /** 可选鉴权：填了就在请求头里带 Authorization: Bearer <token> */
+  token: string
+  /** 请求超时（毫秒），语音合成可能较慢，默认给足 */
+  timeoutMs: number
 }
 
 export interface TtsConfig {
