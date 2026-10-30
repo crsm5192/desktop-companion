@@ -144,18 +144,24 @@ export default function Live2DPet({ modelPath, opacity, actions }: Props): JSX.E
           if (info.modelJSON) {
             // 超大贴图（如 8192×8192）会让部分显卡纹理分配失败 → 模型静默加载不出。
             // 这里先检查并把过大的贴图在内存里降采样，再用 redirectPath 指过去。
+            //
+            // 注意：这一步只是"尽力优化"，**绝不能拖慢或卡住模型加载**。
+            // 因此给整体加了硬超时，超时就按原图继续加载。
             let texMap: Map<string, string> | null = null
             try {
               const prefix = dir ? `app://bundle/${dir}/` : 'app://bundle/'
-              setStatus('检查贴图尺寸…')
-              const prep = await prepareTextures(info.modelJSON, prefix)
+              const prep = await withTimeout(
+                prepareTextures(info.modelJSON, prefix),
+                12000,
+                '贴图预处理'
+              )
               revokeTextures = prep.revoke
               if (prep.downscaled > 0) {
                 texMap = prep.map
-                console.log(`[live2d] 已降采样 ${prep.downscaled} 张贴图`)
               }
             } catch (e) {
-              console.warn('[live2d] 贴图预处理失败，按原图加载：', e)
+              // 超时或失败都直接跳过——模型本身还能用原图加载
+              console.warn('[live2d] 贴图预处理跳过（超时或失败），按原图加载：', e)
             }
 
             setting = new CubismSetting({
