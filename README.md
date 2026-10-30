@@ -135,7 +135,7 @@ npm run build:win:nsis       # NSIS 安装版（启动快）
 npm run build:win            # 两者都出
 ```
 
-产物在 `release/`：`DesktopCompanion 0.3.0.exe`（便携）+ `DesktopCompanion Setup 0.3.0.exe`（安装）+ `models\` + `music\`。
+产物在 `release/`：`DesktopCompanion 0.4.0.exe`（便携）+ `DesktopCompanion Setup 0.4.0.exe`（安装）+ `models\` + `music\`。
 
 打包注意事项：
 - 若 electron 下载超时，用 `ELECTRON_MIRROR` 镜像（见「快速开始」）；
@@ -146,6 +146,10 @@ npm run build:win            # 两者都出
 - **模型列表为空**：看 `diagnostic.log` 的 `modelsDir 存在: ...`，确认模型放对了位置。
 - **模型加载但画面不显示**：多半是显卡驱动/WebGL 问题（Live2D 靠 WebGL 渲染）。打开控制台（`Ctrl+Shift+I`）看 `[webgl] renderer/vendor/version`，更新显卡驱动或换真机。
 - **换电脑切不了模型**：确认把 `models\`（和 `music\`）拷到了正确的数据目录。
+- **VTS 里特效很多的复杂模型显示不出来**：这类模型常带大量 clipping mask（遮罩层）。
+  项目已内置补丁，把遮罩上限从 36 提升到 64，并把超大贴图（>4096）自动降采样，
+  因此绝大多数模型可直接使用。若仍失败，会明确提示「超出渲染限制」，
+  此时需在 VTube Studio / Cubism Editor 里减少遮罩层后重新导出。
 
 ## 相关项目
 
@@ -163,8 +167,8 @@ npm run build:win            # 两者都出
 
 | 版本 | 说明 |
 |---|---|
-| **[便携版](https://github.com/crsm5192/desktop-companion/releases/latest/download/DesktopCompanion.0.3.0.exe)** | 免安装，解压即用；模型/音乐/配置/数据都在 exe 旁边，可整个文件夹带走 |
-| **[安装版](https://github.com/crsm5192/desktop-companion/releases/latest/download/DesktopCompanion.Setup.0.3.0.exe)** | NSIS 安装包，启动更快；数据存在 `%APPDATA%\DesktopCompanion\`，覆盖安装不清空 |
+| **[便携版](https://github.com/crsm5192/desktop-companion/releases/latest/download/DesktopCompanion.0.4.0.exe)** | 免安装，解压即用；模型/音乐/配置/数据都在 exe 旁边，可整个文件夹带走 |
+| **[安装版](https://github.com/crsm5192/desktop-companion/releases/latest/download/DesktopCompanion.Setup.0.4.0.exe)** | NSIS 安装包，启动更快；数据存在 `%APPDATA%\DesktopCompanion\`，覆盖安装不清空 |
 
 > 全部版本见 **[Releases](https://github.com/crsm5192/desktop-companion/releases)**。
 > 模型与音乐因版权不随包分发，需自行放入数据目录（见上文「数据存放位置」）。
