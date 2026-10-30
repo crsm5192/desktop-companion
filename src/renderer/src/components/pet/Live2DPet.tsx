@@ -149,10 +149,13 @@ export default function Live2DPet({ modelPath, opacity, actions }: Props): JSX.E
             // 因此给整体加了硬超时，超时就按原图继续加载。
             let texMap: Map<string, string> | null = null
             try {
-              const prefix = dir ? `app://bundle/${dir}/` : 'app://bundle/'
+              // 贴图 URL：必须与页面同源，否则 <img> 加载不到。
+              // dev 下页面是 http://localhost:5173，打包后是 file://.../renderer/index.html，
+              // 用相对路径最稳（相对于 index.html 就是 public 根）。
+              const prefix = dir ? `${dir}/` : ''
               const prep = await withTimeout(
-                prepareTextures(info.modelJSON, prefix),
-                12000,
+                prepareTextures(modelPath, info.modelJSON, prefix),
+                45000,
                 '贴图预处理'
               )
               revokeTextures = prep.revoke
@@ -187,7 +190,9 @@ export default function Live2DPet({ modelPath, opacity, actions }: Props): JSX.E
         sprite.renderable = true // easy-live2d 默认 renderable=false，显式打开确保渲染
         // 关键：必须先加入舞台，渲染时才触发模型加载（renderFrame → initModel）
         app.stage.addChild(sprite)
-        await withTimeout(sprite.ready, 20000, '模型加载超时（20 秒未完成）')
+        // 加载超时：带巨型贴图的模型（如 8192x8192 ×5）解码很慢，20 秒不够。
+        // 给到 60 秒，仍超时才算真失败。
+        await withTimeout(sprite.ready, 60000, '模型加载超时（60 秒未完成）')
         if (cancelled) return
 
         setStatus('适配尺寸…')

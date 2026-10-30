@@ -5,6 +5,7 @@ export const IPC = {
 
   ModelsList: 'models:list',
   ModelsActions: 'models:actions',
+  ModelsTextureSizes: 'models:texture-sizes',
   OpenModelsDir: 'app:open-models-dir',
   OpenMusicDir: 'app:open-music-dir',
   OpenDataDir: 'app:open-data-dir',

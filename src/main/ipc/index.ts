@@ -6,7 +6,7 @@ import { getMainWindow, clampWindowPosition, setWindowPosition, applyFrameScale 
 import { streamChat } from '../services/llm'
 import { probeServer, synthesize } from '../services/tts'
 import { listNotebooks, syncDiary, syncTodoList, testConnection as siyuanTest } from '../services/siyuan'
-import { discoverModelActions, listModels, modelsDir } from '../services/models'
+import { discoverModelActions, getModelTextureSizes, listModels, modelsDir } from '../services/models'
 import { listMusic, musicDir } from '../services/music'
 import { openDataDir, openModelsDir, openMusicDir } from '../services/folders'
 import { appRootDir } from '../paths'
@@ -28,6 +28,8 @@ export function registerIpc(): void {
   // ---------- 模型列表 ----------
   ipcMain.handle(IPC.ModelsList, () => listModels())
   ipcMain.handle(IPC.ModelsActions, (_e, model3Path: string) => discoverModelActions(model3Path))
+  // 贴图尺寸（主进程读 PNG 文件头，避免 app:// 下 fetch 不可用的问题）
+  ipcMain.handle(IPC.ModelsTextureSizes, (_e, model3Path: string) => getModelTextureSizes(model3Path))
 
   // ---------- 音乐列表 ----------
   ipcMain.handle(IPC.MusicList, () => listMusic())

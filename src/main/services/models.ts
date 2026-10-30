@@ -1,7 +1,7 @@
 import { app } from 'electron'
-import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
+import { closeSync, existsSync, openSync, readdirSync, readFileSync, readSync, statSync } from 'node:fs'
 import { dirname, join, relative, sep } from 'node:path'
-import type { ModelAction, ModelActionsInfo, ModelInfo } from '../../shared/types'
+import type { ModelAction, ModelActionsInfo, ModelInfo, TextureSizeInfo } from '../../shared/types'
 import { externalModelsDir } from '../paths'
 
 export function modelsDir(): string {
@@ -9,6 +9,71 @@ export function modelsDir(): string {
   return app.isPackaged
     ? externalModelsDir()
     : join(app.getAppPath(), 'src', 'renderer', 'public', 'models')
+}
+
+/**
+ * 读取 PNG 文件头拿到宽高（只读前 32 字节，不解码整图）。
+ * PNG：8 字节签名 + 4 字节长度 + "IHDR" + 4 字节宽 + 4 字节高（大端）
+ */
+function readPngSize(absPath: string): { w: number; h: number } | null {
+  let fd: number | null = null
+  try {
+    fd = openSync(absPath, 'r')
+    const b = Buffer.alloc(32)
+    const n = readSync(fd, b, 0, 32, 0)
+    if (n < 24) return null
+    const sig = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]
+    for (let i = 0; i < 8; i++) if (b[i] !== sig[i]) return null
+    if (!(b[12] === 0x49 && b[13] === 0x48 && b[14] === 0x44 && b[15] === 0x52)) return null
+    const w = b.readUInt32BE(16)
+    const h = b.readUInt32BE(20)
+    if (!w || !h) return null
+    return { w, h }
+  } catch {
+    return null
+  } finally {
+    if (fd !== null) {
+      try {
+        closeSync(fd)
+      } catch {
+        /* ignore */
+      }
+    }
+  }
+}
+
+/**
+ * 查询模型各张贴图的尺寸（供渲染层判断是否需要降采样）。
+ *
+ * 为什么放在主进程：`app://` 自定义协议不支持 `fetch`（浏览器层会 TypeError），
+ * 但主进程能直接 `fs` 读文件头，既准确又快（每张只读 32 字节）。
+ */
+export function getModelTextureSizes(model3Path: string): TextureSizeInfo[] {
+  const rel = model3Path.replace(/^models\//, '').replace(/^\.\//, '')
+  const abs = join(modelsDir(), rel)
+  const dir = dirname(abs)
+  const out: TextureSizeInfo[] = []
+
+  let json: { FileReferences?: { Textures?: string[] } } | null = null
+  try {
+    json = JSON.parse(readFileSync(abs, 'utf8'))
+  } catch {
+    return out
+  }
+
+  const textures = json?.FileReferences?.Textures ?? []
+  for (const t of textures) {
+    const clean = t.replace(/^\.\//, '')
+    const p = join(dir, clean)
+    const size = existsSync(p) ? readPngSize(p) : null
+    out.push({
+      file: clean,
+      width: size?.w ?? 0,
+      height: size?.h ?? 0,
+      known: !!size
+    })
+  }
+  return out
 }
 
 /** 扫描模型目录，返回每个子目录下的 model3.json（渲染层用相对路径加载） */

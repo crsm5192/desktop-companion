@@ -188,6 +188,16 @@ export interface ModelActionsInfo {
   motions: ModelAction[]
 }
 
+/** 单张贴图的尺寸信息（由主进程读文件头得到，不经浏览器解码） */
+export interface TextureSizeInfo {
+  /** 相对 model3.json 的路径 */
+  file: string
+  width: number
+  height: number
+  /** 是否成功读到尺寸 */
+  known: boolean
+}
+
 /** 深层 Partial：允许只传嵌套对象里的部分字段（用于配置部分更新） */
 export type DeepPartial<T> = {
   [K in keyof T]?: T[K] extends object ? DeepPartial<T[K]> : T[K]

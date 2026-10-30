@@ -7,23 +7,25 @@
   "license": "MIT",
   "private": true,
   "scripts": {
-    "dev": "electron-vite dev",
+    "dev": "node scripts/patch-easy-live2d.mjs && electron-vite dev",
     "start": "electron-vite preview",
-    "build": "electron-vite build",
+    "build": "node scripts/patch-easy-live2d.mjs && electron-vite build",
     "typecheck:node": "tsc --noEmit -p tsconfig.node.json --composite false",
     "typecheck:web": "tsc --noEmit -p tsconfig.web.json --composite false",
     "typecheck": "npm run typecheck:node && npm run typecheck:web",
     "build:win": "npm run build && electron-builder --win",
     "build:win:portable": "npm run build && electron-builder --win portable && node scripts/copy-models.js",
-    "build:win:nsis": "npm run build && electron-builder --win nsis && node scripts/copy-models.js"
+    "build:win:nsis": "npm run build && electron-builder --win nsis && node scripts/copy-models.js",
+    "postinstall": "node scripts/patch-easy-live2d.mjs",
+    "patch:live2d": "node scripts/patch-easy-live2d.mjs"
   },
   "dependencies": {
-    "sql.js": "^1.12.0",
+    "easy-live2d": "^0.4.4",
     "music-metadata": "^10.1.0",
     "pixi.js": "^8.5.0",
-    "easy-live2d": "^0.4.4",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
+    "sql.js": "^1.12.0",
     "zustand": "^4.5.5"
   },
   "devDependencies": {
