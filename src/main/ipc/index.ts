@@ -6,8 +6,10 @@ import { getMainWindow, clampWindowPosition, setWindowPosition, applyFrameScale 
 import { streamChat } from '../services/llm'
 import { probeServer, synthesize } from '../services/tts'
 import { listNotebooks, syncDiary, syncTodoList, testConnection as siyuanTest } from '../services/siyuan'
-import { discoverModelActions, listModels } from '../services/models'
-import { listMusic } from '../services/music'
+import { discoverModelActions, listModels, modelsDir } from '../services/models'
+import { listMusic, musicDir } from '../services/music'
+import { openDataDir, openModelsDir, openMusicDir } from '../services/folders'
+import { appRootDir } from '../paths'
 import { dbAddChat, dbAddTodo, dbClearChat, dbDeleteDiary, dbDeleteTodo, dbListChat, dbListDiary, dbListTodos, dbSaveDiary, dbUpdateTodo } from '../services/db'
 
 export function registerIpc(): void {
@@ -29,6 +31,11 @@ export function registerIpc(): void {
 
   // ---------- 音乐列表 ----------
   ipcMain.handle(IPC.MusicList, () => listMusic())
+
+  // ---------- 一键打开数据目录（模型 / 音乐 / 配置） ----------
+  ipcMain.handle(IPC.OpenModelsDir, () => openModelsDir(modelsDir()))
+  ipcMain.handle(IPC.OpenMusicDir, () => openMusicDir(musicDir()))
+  ipcMain.handle(IPC.OpenDataDir, () => openDataDir(appRootDir()))
 
   // ---------- 点击穿透 ----------
   ipcMain.handle(IPC.PetSetClickThrough, (_e, ignore: boolean) => {

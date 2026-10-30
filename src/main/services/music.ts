@@ -30,11 +30,16 @@ function cleanTitle(t: string | undefined): string | undefined {
   return c
 }
 
-/** 扫描音乐目录，读取音频元数据标题（没有则回退文件名） */
-export async function listMusic(): Promise<MusicInfo[]> {
-  const dir = app.isPackaged
+/** 音乐目录：打包后再数据目录，开发时在 public/music */
+export function musicDir(): string {
+  return app.isPackaged
     ? externalMusicDir()
     : join(app.getAppPath(), 'src', 'renderer', 'public', 'music')
+}
+
+/** 扫描音乐目录，读取音频元数据标题（没有则回退文件名） */
+export async function listMusic(): Promise<MusicInfo[]> {
+  const dir = musicDir()
   if (!existsSync(dir)) return []
 
   const files = readdirSync(dir).filter((f) => AUDIO_EXT.test(f))

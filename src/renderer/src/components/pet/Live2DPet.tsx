@@ -3,6 +3,7 @@ import { Application, Ticker } from 'pixi.js'
 import { CubismSetting, Live2DSprite, Priority } from 'easy-live2d'
 import { useSpeechStore } from '../../store/speech'
 import { usePetStore } from '../../store/pet'
+import { prepareTextures } from '../../lib/textureDownscale'
 import type { ModelAction } from '@shared/types'
 
 interface Props {
@@ -40,6 +41,38 @@ function loadCubismCore(): Promise<void> {
   })
 }
 
+/**
+ * 识别 Cubism 内部错误分支。
+ *
+ * easy-live2d 里有些错误分支写成 `new CubismLogError(...)`（Cubism 官方示例如此），
+ * 而压缩产物把它定义成普通函数，于是抛出 `TypeError: CubismLogError is not a constructor`，
+ * 真正的错误信息（遮罩超限 / 着色器编译失败 / 贴图异常）被完全吞掉，
+ * 表现就是「模型选了但画面空白、没有任何提示」。
+ *
+ * 这里监听未处理异常，把这类"被掩盖的错误"翻译成可读提示。
+ */
+let cubismErrHooked = false
+function hookCubismErrors(setStatus: (s: string) => void): void {
+  if (cubismErrHooked) return
+  cubismErrHooked = true
+  const handle = (msg: string): void => {
+    if (!/CubismLogError is not a constructor/.test(msg)) return
+    setStatus('错误: 该模型超出渲染限制（遮罩数/贴图过大），无法显示')
+    console.error(
+      '[live2d] 模型触发了 Cubism 的错误分支，常见原因：' +
+        '1) clipping mask 数量超过上限（多数模型限制 4 个遮罩层）；' +
+        '2) 贴图过大导致纹理分配失败；' +
+        '3) 着色器编译失败。'
+    )
+  }
+  window.addEventListener('unhandledrejection', (ev) => {
+    handle(String((ev.reason as Error)?.message ?? ev.reason ?? ''))
+  })
+  window.addEventListener('error', (ev) => {
+    handle(String((ev.error as Error)?.message ?? ev.message ?? ''))
+  })
+}
+
 /** 打印 WebGL / GPU 信息，排查"模型加载了但显示不出来"的问题 */
 function logWebGLInfo(): void {
   try {
@@ -70,6 +103,8 @@ export default function Live2DPet({ modelPath, opacity, actions }: Props): JSX.E
     let canvas: HTMLCanvasElement | null = null
     let cleanupListeners: (() => void) | null = null
     let onResize: (() => void) | null = null
+    /** 降采样贴图产生的 blob URL 释放函数 */
+    let revokeTextures: (() => void) | null = null
     const host = hostRef.current
     if (!host) {
       setStatus('容器缺失')
@@ -79,6 +114,7 @@ export default function Live2DPet({ modelPath, opacity, actions }: Props): JSX.E
     ;(async () => {
       try {
         logWebGLInfo()
+        hookCubismErrors(setStatus)
         setStatus('加载 Cubism Core…')
         await loadCubismCore()
 
@@ -106,10 +142,34 @@ export default function Live2DPet({ modelPath, opacity, actions }: Props): JSX.E
         try {
           const info = await window.api.models.actions(modelPath)
           if (info.modelJSON) {
+            // 超大贴图（如 8192×8192）会让部分显卡纹理分配失败 → 模型静默加载不出。
+            // 这里先检查并把过大的贴图在内存里降采样，再用 redirectPath 指过去。
+            let texMap: Map<string, string> | null = null
+            try {
+              const prefix = dir ? `app://bundle/${dir}/` : 'app://bundle/'
+              setStatus('检查贴图尺寸…')
+              const prep = await prepareTextures(info.modelJSON, prefix)
+              revokeTextures = prep.revoke
+              if (prep.downscaled > 0) {
+                texMap = prep.map
+                console.log(`[live2d] 已降采样 ${prep.downscaled} 张贴图`)
+              }
+            } catch (e) {
+              console.warn('[live2d] 贴图预处理失败，按原图加载：', e)
+            }
+
             setting = new CubismSetting({
               modelJSON: info.modelJSON as any,
               prefixPath: dir ? `${dir}/` : ''
             })
+
+            // 把超大贴图重定向到降采样后的 blob URL
+            if (texMap && texMap.size > 0) {
+              setting.redirectPath(({ file }) => {
+                const hit = texMap.get(file)
+                return hit ?? (dir ? `${dir}/${file}` : file)
+              })
+            }
           }
         } catch {
           setting = undefined // 探测失败就退回默认解析
@@ -302,6 +362,7 @@ export default function Live2DPet({ modelPath, opacity, actions }: Props): JSX.E
       cancelled = true
       live2dActionRef.current = null
       cleanupListeners?.()
+      revokeTextures?.()
       if (app) {
         try {
           app.destroy(true)

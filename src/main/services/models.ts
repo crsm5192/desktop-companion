@@ -4,7 +4,7 @@ import { dirname, join, relative, sep } from 'node:path'
 import type { ModelAction, ModelActionsInfo, ModelInfo } from '../../shared/types'
 import { externalModelsDir } from '../paths'
 
-function modelsDir(): string {
+export function modelsDir(): string {
   // 打包后：exe 旁边的 models 目录（便携）；开发：src/renderer/public/models
   return app.isPackaged
     ? externalModelsDir()

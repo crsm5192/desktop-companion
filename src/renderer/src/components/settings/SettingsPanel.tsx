@@ -10,6 +10,7 @@ export default function SettingsPanel(): JSX.Element {
   const [ttsStatus, setTtsStatus] = useState('')
   const [models, setModels] = useState<ModelInfo[]>([])
   const [notebooks, setNotebooks] = useState<SiyuanNotebook[]>([])
+  const [folderMsg, setFolderMsg] = useState('')
 
   useEffect(() => {
     // 配置 + 模型列表一起加载，避免下拉框在列表未到时先渲染、值对不上（导致记不住选中项）
@@ -22,6 +23,34 @@ export default function SettingsPanel(): JSX.Element {
   }, [])
 
   if (!cfg) return <div className="panel settings-panel">加载中…</div>
+
+  /** 一键打开数据目录（模型 / 音乐 / 配置） */
+  const openFolder = async (kind: 'models' | 'music' | 'data'): Promise<void> => {
+    setFolderMsg('打开中…')
+    try {
+      const fn =
+        kind === 'models'
+          ? window.api.folders.openModels
+          : kind === 'music'
+            ? window.api.folders.openMusic
+            : window.api.folders.openData
+      const r = await fn()
+      setFolderMsg(r.ok ? `已打开：${r.path}` : `打开失败：${r.error ?? r.path}`)
+    } catch (e) {
+      setFolderMsg(`打开失败：${e instanceof Error ? e.message : String(e)}`)
+    }
+  }
+
+  /** 刷新模型列表（刚往目录里放了新模型时用） */
+  const reloadModels = (): void => {
+    void window.api.models
+      .list()
+      .then((list) => {
+        setModels(list)
+        setFolderMsg(`模型已刷新，共 ${list.length} 个`)
+      })
+      .catch((e) => setFolderMsg(`刷新失败：${e instanceof Error ? e.message : String(e)}`))
+  }
 
   const patch = (p: Partial<AppConfig>): void => setCfg({ ...cfg, ...p })
 
@@ -448,6 +477,13 @@ export default function SettingsPanel(): JSX.Element {
             ))}
           </select>
         </label>
+        <div className="settings-row">
+          <button onClick={() => void openFolder('models')}>📁 模型目录</button>
+          <button onClick={() => void openFolder('music')}>🎵 音乐目录</button>
+          <button onClick={() => void openFolder('data')}>⚙️ 数据目录</button>
+          <button onClick={reloadModels}>↻ 刷新模型列表</button>
+        </div>
+        {folderMsg && <div className="siyuan-status">{folderMsg}</div>}
         <label className="row">
           <input
             type="checkbox"

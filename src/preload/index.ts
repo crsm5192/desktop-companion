@@ -71,6 +71,16 @@ const api = {
     list: (): Promise<MusicInfo[]> => ipcRenderer.invoke(IPC.MusicList)
   },
 
+  /** 一键打开数据目录（在系统文件管理器里） */
+  folders: {
+    openModels: (): Promise<{ ok: boolean; path: string; error?: string }> =>
+      ipcRenderer.invoke(IPC.OpenModelsDir),
+    openMusic: (): Promise<{ ok: boolean; path: string; error?: string }> =>
+      ipcRenderer.invoke(IPC.OpenMusicDir),
+    openData: (): Promise<{ ok: boolean; path: string; error?: string }> =>
+      ipcRenderer.invoke(IPC.OpenDataDir)
+  },
+
   setClickThrough: (ignore: boolean): Promise<void> => ipcRenderer.invoke(IPC.PetSetClickThrough, ignore),
   getPetPosition: (): Promise<[number, number]> => ipcRenderer.invoke(IPC.PetGetPosition),
   setPetPosition: (x: number, y: number): Promise<void> => ipcRenderer.invoke(IPC.PetSetPosition, x, y),

@@ -5,6 +5,9 @@ export const IPC = {
 
   ModelsList: 'models:list',
   ModelsActions: 'models:actions',
+  OpenModelsDir: 'app:open-models-dir',
+  OpenMusicDir: 'app:open-music-dir',
+  OpenDataDir: 'app:open-data-dir',
   MusicList: 'music:list',
 
   ChatStream: 'chat:stream',
