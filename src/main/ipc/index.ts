@@ -1,8 +1,9 @@
-import { Notification, ipcMain, screen } from 'electron'
+import { BrowserWindow, Notification, ipcMain, screen } from 'electron'
 import { IPC } from '../../shared/constants'
 import type { AppConfig, ChatMessage, DeepPartial, DiaryEntry, SiyuanConfig, TodoItem, TtsConfig } from '../../shared/types'
 import { getConfig, setConfig } from '../config'
 import { getMainWindow, clampWindowPosition, setWindowPosition, applyFrameScale } from '../window'
+import { dockChatWindow, getChatWindow, isChatOpen, setChatOpen } from '../chatWindow'
 import { streamChat } from '../services/llm'
 import { probeServer, synthesize } from '../services/tts'
 import { listNotebooks, syncDiary, syncTodoList, testConnection as siyuanTest } from '../services/siyuan'
@@ -22,6 +23,8 @@ export function registerIpc(): void {
       const win = getMainWindow()
       if (win) applyFrameScale(win, patch.pet.frameScale)
     }
+    // Signal only; each window fetches the config itself without broadcasting credentials.
+    for (const win of BrowserWindow.getAllWindows()) win.webContents.send(IPC.ConfigChanged)
     return next
   })
 
@@ -68,6 +71,12 @@ export function registerIpc(): void {
   })
 
   // ---------- 对话（流式） ----------
+  ipcMain.handle(IPC.ChatWindowSetOpen, (_event, open: boolean) => setChatOpen(open === true))
+  ipcMain.handle(IPC.ChatWindowGetOpen, () => isChatOpen())
+  ipcMain.handle(IPC.ChatWindowDock, () => dockChatWindow())
+  ipcMain.on(IPC.PetSpeaking, (event, speaking: boolean) => {
+    if (event.sender === getChatWindow()?.webContents) getMainWindow()?.webContents.send(IPC.PetSpeaking, speaking === true)
+  })
   ipcMain.on(IPC.ChatStream, async (event, messages: ChatMessage[]) => {
     const wc = event.sender
     try {

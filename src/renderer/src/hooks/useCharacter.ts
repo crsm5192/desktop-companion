@@ -10,6 +10,7 @@ const FALLBACK: CharacterConfig = {
 
 let cache: CharacterConfig | null = null
 const listeners = new Set<(c: CharacterConfig) => void>()
+let offConfig: (() => void) | null = null
 
 function apply(c: CharacterConfig): void {
   cache = c
@@ -27,6 +28,7 @@ export function refreshCharacter(): void {
  */
 export function useCharacter(): CharacterConfig {
   const [ch, setCh] = useState<CharacterConfig>(cache ?? FALLBACK)
+
 
   useEffect(() => {
     if (cache) {
@@ -47,8 +49,10 @@ export function useCharacter(): CharacterConfig {
 
   useEffect(() => {
     listeners.add(setCh)
+    offConfig ??= window.api.onConfigChanged(refreshCharacter)
     return () => {
       listeners.delete(setCh)
+      if (!listeners.size) { offConfig?.(); offConfig = null }
     }
   }, [])
 

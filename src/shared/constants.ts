@@ -2,6 +2,7 @@
 export const IPC = {
   ConfigGet: 'config:get',
   ConfigSet: 'config:set',
+  ConfigChanged: 'config:changed',
 
   ModelsList: 'models:list',
   ModelsActions: 'models:actions',
@@ -18,6 +19,11 @@ export const IPC = {
   ChatHistoryGet: 'chat:history:get',
   ChatHistoryAdd: 'chat:history:add',
   ChatHistoryClear: 'chat:history:clear',
+  ChatWindowSetOpen: 'chat-window:set-open',
+  ChatWindowGetOpen: 'chat-window:get-open',
+  ChatWindowState: 'chat-window:state',
+  ChatWindowDock: 'chat-window:dock',
+  PetSpeaking: 'pet:speaking',
 
   TtsSpeak: 'tts:speak',
   TtsProbe: 'tts:probe',

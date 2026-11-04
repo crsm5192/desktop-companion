@@ -12,7 +12,7 @@ export interface ChatMessage {
  * 换名字/称呼即可变成通用伴侣，聊天人设仍由 chat.persona 单独控制。
  */
 export interface CharacterConfig {
-  /** 角色名（显示在聊天标题、气泡署名、托盘提示） */
+  /** 角色名（显示在聊天标题、气泡署名） */
   name: string
   /** 角色自我介绍用的别名，可留空 */
   alias: string
@@ -110,6 +110,8 @@ export interface PetConfig {
   clickThrough: boolean
   /** 锁定：true 时进入调整模式（左键移窗 / 右键平移 / 滑条缩放） */
   locked: boolean
+  /** 点击模型不同部位播放动作和离线台词 */
+  interactionEnabled: boolean
   /** 眼球追踪鼠标（眼睛跟随光标） */
   eyeTracking: boolean
   /** 眼球追踪幅度（乘数，1 = 默认） */
@@ -173,7 +175,7 @@ export interface ModelAction {
   /** 按钮显示名 */
   name: string
   kind: 'expression' | 'motion'
-  /** 表情：文件相对路径 */
+  /** 表情或动作的文件相对路径 */
   file?: string
   /** 动作：分组名 */
   group?: string
@@ -186,6 +188,8 @@ export interface ModelActionsInfo {
   modelJSON: unknown | null
   expressions: ModelAction[]
   motions: ModelAction[]
+  /** Cubism DisplayInfo 中的部件名称，用于识别点击区域 */
+  partNames?: Record<string, string>
 }
 
 /** 单张贴图的尺寸信息（由主进程读文件头得到，不经浏览器解码） */

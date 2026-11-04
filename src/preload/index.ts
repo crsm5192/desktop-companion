@@ -5,6 +5,28 @@ import type { AppConfig, ChatMessage, DeepPartial, DiaryEntry, ModelActionsInfo,
 const api = {
   getConfig: (): Promise<AppConfig> => ipcRenderer.invoke(IPC.ConfigGet),
   setConfig: (patch: DeepPartial<AppConfig>): Promise<AppConfig> => ipcRenderer.invoke(IPC.ConfigSet, patch),
+  onConfigChanged: (cb: () => void): (() => void) => {
+    const listener = (): void => cb()
+    ipcRenderer.on(IPC.ConfigChanged, listener)
+    return () => ipcRenderer.removeListener(IPC.ConfigChanged, listener)
+  },
+
+  chatWindow: {
+    setOpen: (open: boolean): Promise<boolean> => ipcRenderer.invoke(IPC.ChatWindowSetOpen, open),
+    getOpen: (): Promise<boolean> => ipcRenderer.invoke(IPC.ChatWindowGetOpen),
+    dock: (): Promise<void> => ipcRenderer.invoke(IPC.ChatWindowDock),
+    onState: (cb: (open: boolean) => void): (() => void) => {
+      const listener = (_event: unknown, open: boolean): void => cb(open)
+      ipcRenderer.on(IPC.ChatWindowState, listener)
+      return () => ipcRenderer.removeListener(IPC.ChatWindowState, listener)
+    },
+    setSpeaking: (speaking: boolean): void => ipcRenderer.send(IPC.PetSpeaking, speaking),
+    onSpeaking: (cb: (speaking: boolean) => void): (() => void) => {
+      const listener = (_event: unknown, speaking: boolean): void => cb(speaking)
+      ipcRenderer.on(IPC.PetSpeaking, listener)
+      return () => ipcRenderer.removeListener(IPC.PetSpeaking, listener)
+    }
+  },
 
   chat: {
     send: (messages: ChatMessage[]): void => {

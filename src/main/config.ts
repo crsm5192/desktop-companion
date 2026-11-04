@@ -57,6 +57,7 @@ const DEFAULT_CONFIG: AppConfig = {
     frameScale: 1.0,
     clickThrough: false,
     locked: false,
+    interactionEnabled: false,
     eyeTracking: true,
     eyeTrackingStrength: 1.0,
     offsetX: 0,

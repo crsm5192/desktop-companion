@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs'
 import { pathToFileURL } from 'node:url'
 import { getConfig } from './config'
 import { externalModelsDir, externalMusicDir } from './paths'
+import { bindChatWindow, destroyChatWindow } from './chatWindow'
 
 // 让 app:// 协议支持 fetch（打包后渲染层用 fetch 加载模型/贴图必需），必须在 app ready 前声明
 protocol.registerSchemesAsPrivileged([
@@ -106,6 +107,7 @@ function registerAppProtocol(): void {
 
 app.on('before-quit', () => {
   quitting = true
+  destroyChatWindow()
 })
 
 export function createMainWindow(): BrowserWindow {
@@ -131,6 +133,7 @@ export function createMainWindow(): BrowserWindow {
   })
 
   mainWindow.setAlwaysOnTop(true, 'screen-saver')
+  bindChatWindow(mainWindow)
 
   // 恢复上次保存的窗口位置，并钳制在屏幕工作区内
   if (cfg.pet.winX !== null && cfg.pet.winY !== null) {

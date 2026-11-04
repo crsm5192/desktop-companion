@@ -2,6 +2,7 @@ import { useEffect } from 'react'
 import Live2DPet from './Live2DPet'
 import { usePetStore } from '../../store/pet'
 import { useModelActionsStore } from '../../store/modelActions'
+import { useInteractionStore } from '../../store/interaction'
 
 /**
  * 桌面宠物渲染容器。
@@ -30,13 +31,15 @@ export default function PetStage(): JSX.Element {
       setEyeTracking(cfg.pet.eyeTracking)
       setEyeTrackingStrength(cfg.pet.eyeTrackingStrength)
       setOpacity(cfg.pet.opacity ?? 1)
+      usePetStore.getState().setInteractionEnabled(cfg.pet.interactionEnabled ?? false)
     })
   }, [setModel, setLocked, setOffset, setEyeTracking, setEyeTrackingStrength, setOpacity])
 
   // 切换模型后重新探测可用按键（不同模型表情/动作各不相同）
   useEffect(() => {
+    clearActions()
+    useInteractionStore.getState().clear()
     if (!modelPath) {
-      clearActions()
       return
     }
     let alive = true

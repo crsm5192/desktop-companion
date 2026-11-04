@@ -28,11 +28,15 @@ export function useLlmChat(): {
 
   // 加载人设 + 历史（SQLite）
   useEffect(() => {
-    void window.api.getConfig().then((cfg) => {
-      personaRef.current = cfg.chat.persona
-      voiceRuleRef.current = cfg.chat.voiceRule || ''
-      historyLimitRef.current = cfg.chat.historyLimit
-    })
+    const refresh = (): void => {
+      void window.api.getConfig().then((cfg) => {
+        personaRef.current = cfg.chat.persona
+        voiceRuleRef.current = cfg.chat.voiceRule || ''
+        historyLimitRef.current = cfg.chat.historyLimit
+      })
+    }
+    refresh()
+    const unsubscribe = window.api.onConfigChanged(refresh)
 
     void (async () => {
       // 一次性迁移老 localStorage → DB
@@ -48,6 +52,7 @@ export function useLlmChat(): {
       const saved = await window.api.chat.history.get()
       if (Array.isArray(saved) && saved.length) setMessages(saved)
     })()
+    return unsubscribe
   }, [])
 
   // 流式监听

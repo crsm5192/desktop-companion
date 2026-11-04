@@ -4,7 +4,8 @@ import { CubismSetting, Live2DSprite, Priority } from 'easy-live2d'
 import { useSpeechStore } from '../../store/speech'
 import { usePetStore } from '../../store/pet'
 import { prepareTextures } from '../../lib/textureDownscale'
-import type { ModelAction } from '@shared/types'
+import { attachPetInteraction } from '../../lib/live2dInteraction'
+import type { ModelAction, ModelActionsInfo } from '@shared/types'
 
 interface Props {
   modelPath: string
@@ -103,6 +104,8 @@ export default function Live2DPet({ modelPath, opacity, actions }: Props): JSX.E
     let canvas: HTMLCanvasElement | null = null
     let cleanupListeners: (() => void) | null = null
     let onResize: (() => void) | null = null
+    let interaction: ReturnType<typeof attachPetInteraction> | null = null
+    usePetStore.getState().setModelReady(false)
     /** 降采样贴图产生的 blob URL 释放函数 */
     let revokeTextures: (() => void) | null = null
     const host = hostRef.current
@@ -117,6 +120,7 @@ export default function Live2DPet({ modelPath, opacity, actions }: Props): JSX.E
         hookCubismErrors(setStatus)
         setStatus('加载 Cubism Core…')
         await loadCubismCore()
+        if (cancelled) return
 
         setStatus('创建画布…')
         const w = host.clientWidth || 420
@@ -131,16 +135,21 @@ export default function Live2DPet({ modelPath, opacity, actions }: Props): JSX.E
           backgroundAlpha: 0,
           antialias: false,
           autoDensity: true,
+          preference: 'webgl',
+          preserveDrawingBuffer: true,
           resolution: 1
         })
+        if (cancelled) { app.destroy(true); return }
 
         setStatus('加载模型…')
         // 用主进程探测补全后的 modelJSON 构造设置，这样磁盘上有、但 model3.json 没声明的
         // 表情/动作也能被 easy-live2d 识别（不同模型差异统一在这里抹平）
         const dir = modelPath.includes('/') ? modelPath.slice(0, modelPath.lastIndexOf('/')) : ''
         let setting: CubismSetting | undefined
+        let modelInfo: ModelActionsInfo = { modelJSON: null, expressions: [], motions: [] }
         try {
           const info = await window.api.models.actions(modelPath)
+          modelInfo = info
           if (info.modelJSON) {
             // 超大贴图（如 8192×8192）会让部分显卡纹理分配失败 → 模型静默加载不出。
             // 这里先检查并把过大的贴图在内存里降采样，再用 redirectPath 指过去。
@@ -183,6 +192,7 @@ export default function Live2DPet({ modelPath, opacity, actions }: Props): JSX.E
         } catch {
           setting = undefined // 探测失败就退回默认解析
         }
+        if (cancelled) { revokeTextures?.(); return }
 
         const sprite = new Live2DSprite(
           setting ? { modelSetting: setting, ticker: Ticker.shared } : { modelPath, ticker: Ticker.shared }
@@ -194,6 +204,7 @@ export default function Live2DPet({ modelPath, opacity, actions }: Props): JSX.E
         // 给到 60 秒，仍超时才算真失败。
         await withTimeout(sprite.ready, 60000, '模型加载超时（60 秒未完成）')
         if (cancelled) return
+        interaction = attachPetInteraction(sprite, canvas, modelInfo)
 
         setStatus('适配尺寸…')
         // 基础尺寸：高度适配、脚踩窗口底、水平居中；缩放(滑条)在此基础上乘倍数
@@ -240,9 +251,10 @@ export default function Live2DPet({ modelPath, opacity, actions }: Props): JSX.E
           sprite.anchor.set(0.5, 1)
           sprite.x = fit.baseX + offsetX
           sprite.y = fit.baseY + offsetY
-          // 头部位置（模型头顶往下约 12% = 接近脸/头顶），供文字气泡定位
-          const modelH = fit.baseFit * scale * rawH
-          usePetStore.getState().setHead(fit.baseX + offsetX, fit.baseY + offsetY - modelH * 0.88)
+          const pose = interaction?.pose()
+          sprite.x += pose?.x ?? 0
+          sprite.y += pose?.y ?? 0
+          if (pose) interaction?.applyJoints(pose)
           // 眼睛追踪：开 → 平滑趋近光标；关 → 回正
           if (eyeTracking) {
             curNX += (targetNX - curNX) * 0.1
@@ -251,11 +263,17 @@ export default function Live2DPet({ modelPath, opacity, actions }: Props): JSX.E
             curNX = 0
             curNY = 0
           }
-          sprite.setParameterValueById('ParamAngleX', curNX * 15 * eyeTrackingStrength)
-          sprite.setParameterValueById('ParamAngleY', -curNY * 12 * eyeTrackingStrength)
-          sprite.setParameterValueById('ParamEyeBallX', curNX * 1.5 * eyeTrackingStrength)
-          sprite.setParameterValueById('ParamEyeBallY', -curNY * 1.5 * eyeTrackingStrength)
-          sprite.setParameterValueById('ParamMouthOpenY', useSpeechStore.getState().mouthLevel)
+          // Leave headroom for near-limit gestures; eyes still follow the cursor.
+          const gazeX = 1 - Math.min(1, Math.abs(pose?.angleX ?? 0) / 30)
+          const gazeY = 1 - Math.min(1, Math.abs(pose?.angleY ?? 0) / 30)
+          sprite.setParameterValueById('ParamAngleX', curNX * 15 * eyeTrackingStrength * gazeX + (pose?.angleX ?? 0))
+          sprite.setParameterValueById('ParamAngleY', -curNY * 12 * eyeTrackingStrength * gazeY + (pose?.angleY ?? 0))
+          if (pose) sprite.setParameterValueById('ParamAngleZ', pose.angleZ)
+          const gazeWeight = pose?.gazeWeight ?? 0
+          sprite.setParameterValueById('ParamEyeBallX', curNX * 1.5 * eyeTrackingStrength * (1 - gazeWeight) + (pose?.gazeX ?? 0) * gazeWeight)
+          sprite.setParameterValueById('ParamEyeBallY', -curNY * 1.5 * eyeTrackingStrength * (1 - gazeWeight) + (pose?.gazeY ?? 0) * gazeWeight)
+          const speech = useSpeechStore.getState()
+          sprite.setParameterValueById('ParamMouthOpenY', speech.speaking ? speech.mouthLevel : (pose?.mouthOpen ?? 0))
           // 隐藏免费模型水印/广告：Paramheadxy* 参数 30=隐藏、0=显示，每帧强制覆盖（无此参数的模型是空操作）
           for (const name of ['Paramheadxy', 'Paramheadxy2', 'Paramheadxy3', 'Paramheadxy4', 'Paramheadxy5', 'Paramheadxy6', 'Paramheadxy7', 'Paramheadxy8', 'Paramheadxy9']) {
             sprite.setParameterValueById(name, 30)
@@ -268,26 +286,38 @@ export default function Live2DPet({ modelPath, opacity, actions }: Props): JSX.E
           }
         }
         app.ticker.add(applyTransform)
+        const headAnchor = {
+          postrender(): void {
+            const head = interaction?.headPosition()
+            if (head) usePetStore.getState().setHead(head.x, head.y)
+          }
+        }
+        app.renderer.runners.postrender.add(headAnchor)
 
         // 暴露动作执行器：UI 按钮点一下 → 播对应表情/动作
         live2dActionRef.current = (a: ModelAction): void => {
+          interaction?.cancel()
           try {
             if (a.kind === 'expression') {
               const list = sprite.getExpressions()
               const hit = list.find((e) => e.name === a.name)
               if (hit) {
+                interaction?.setManualExpression(hit.name)
                 sprite.setExpression({ expressionId: hit.name })
                 return
               }
               // 名字对不上时按序号兜底
               const idx = actions?.expressions.findIndex((x) => x.name === a.name) ?? -1
-              if (idx >= 0) sprite.setExpression({ index: idx })
+              if (idx >= 0) {
+                interaction?.setManualExpression(sprite.getExpressions()[idx].name)
+                sprite.setExpression({ index: idx })
+              }
             } else if (a.group !== undefined && a.index !== undefined) {
               void sprite.startMotion({
                 group: a.group,
                 no: a.index,
                 priority: Priority.Normal
-              })
+              }).catch((e) => console.warn('[live2d] 动作执行失败', e))
             }
           } catch (e) {
             console.warn('[live2d] 动作执行失败', a, e)
@@ -343,6 +373,7 @@ export default function Live2DPet({ modelPath, opacity, actions }: Props): JSX.E
           lastY = ev.clientY
         }
         const onUp = (): void => {
+          if (!dragging) return
           dragging = false
           const s = usePetStore.getState()
           void window.api.setConfig({ pet: { offsetX: s.offsetX, offsetY: s.offsetY } })
@@ -353,6 +384,7 @@ export default function Live2DPet({ modelPath, opacity, actions }: Props): JSX.E
         window.addEventListener('mousemove', onMove)
         window.addEventListener('mouseup', onUp)
         cleanupListeners = (): void => {
+          app?.renderer.runners.postrender.remove(headAnchor)
           window.clearInterval(cursorTimer)
           if (onResize) window.removeEventListener('resize', onResize)
           canvas?.removeEventListener('mousedown', onDown)
@@ -362,8 +394,10 @@ export default function Live2DPet({ modelPath, opacity, actions }: Props): JSX.E
         }
 
         console.log('[live2d] DONE rawH=', rawH, 'baseFit=', fit.baseFit)
+        usePetStore.getState().setModelReady(true)
         setStatus('')
       } catch (e) {
+        if (cancelled) return
         console.error('[live2d] ERROR:', e)
         setStatus('错误: ' + String((e as Error)?.message ?? e))
       }
@@ -371,6 +405,8 @@ export default function Live2DPet({ modelPath, opacity, actions }: Props): JSX.E
 
     return () => {
       cancelled = true
+      interaction?.destroy()
+      usePetStore.getState().setModelReady(false)
       live2dActionRef.current = null
       cleanupListeners?.()
       revokeTextures?.()

@@ -55,7 +55,11 @@ export default function SettingsPanel(): JSX.Element {
   const patch = (p: Partial<AppConfig>): void => setCfg({ ...cfg, ...p })
 
   const save = async (): Promise<void> => {
-    await window.api.setConfig(cfg)
+    // 工具栏可在面板打开期间切换互动，保存设置时保留最新开关状态。
+    await window.api.setConfig({
+      ...cfg,
+      pet: { ...cfg.pet, interactionEnabled: usePetStore.getState().interactionEnabled }
+    })
     // 即时生效：写共享 store，PetStage/App 订阅后立即重载/刷新
     usePetStore.getState().setModel(cfg.pet.modelPath, cfg.pet.scale)
     usePetStore.getState().setLocked(cfg.pet.locked)
@@ -129,7 +133,7 @@ export default function SettingsPanel(): JSX.Element {
       <fieldset>
         <legend>角色设定</legend>
         <label>
-          角色名（显示在聊天标题 / 托盘）
+          角色名（显示在聊天标题 / 气泡署名）
           <input
             value={cfg.character.name}
             onChange={(e) => patch({ character: { ...cfg.character, name: e.target.value } })}

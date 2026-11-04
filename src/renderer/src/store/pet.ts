@@ -5,6 +5,8 @@ interface PetState {
   scale: number
   opacity: number
   locked: boolean
+  interactionEnabled: boolean
+  modelReady: boolean
   offsetX: number
   offsetY: number
   eyeTracking: boolean
@@ -15,6 +17,8 @@ interface PetState {
   setScale: (scale: number) => void
   setOpacity: (opacity: number) => void
   setLocked: (locked: boolean) => void
+  setInteractionEnabled: (enabled: boolean) => void
+  setModelReady: (ready: boolean) => void
   setOffset: (offsetX: number, offsetY: number) => void
   setEyeTracking: (eyeTracking: boolean) => void
   setEyeTrackingStrength: (eyeTrackingStrength: number) => void
@@ -29,6 +33,8 @@ export const usePetStore = create<PetState>((set) => ({
   scale: 1,
   opacity: 1,
   locked: false,
+  interactionEnabled: false,
+  modelReady: false,
   offsetX: 0,
   offsetY: 0,
   eyeTracking: true,
@@ -39,8 +45,11 @@ export const usePetStore = create<PetState>((set) => ({
   setScale: (scale) => set({ scale }),
   setOpacity: (opacity) => set({ opacity }),
   setLocked: (locked) => set({ locked }),
+  setInteractionEnabled: (interactionEnabled) => set({ interactionEnabled }),
+  setModelReady: (modelReady) => set({ modelReady }),
   setOffset: (offsetX, offsetY) => set({ offsetX, offsetY }),
   setEyeTracking: (eyeTracking) => set({ eyeTracking }),
   setEyeTrackingStrength: (eyeTrackingStrength) => set({ eyeTrackingStrength }),
-  setHead: (headX, headY) => set({ headX, headY })
+  setHead: (headX, headY) => set((state) =>
+    Math.abs(state.headX - headX) < 0.25 && Math.abs(state.headY - headY) < 0.25 ? state : { headX, headY })
 }))

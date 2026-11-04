@@ -1,12 +1,14 @@
-import { useEffect } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useUIStore } from './store/ui'
 import { usePetStore } from './store/pet'
 import { useMusicStore } from './store/music'
 import { useModelActionsStore } from './store/modelActions'
+import { useInteractionStore } from './store/interaction'
+import { useSpeechStore } from './store/speech'
+import { CLICK_DISTANCE, petInteractionRef } from './lib/petInteraction'
 import PetStage from './components/pet/PetStage'
 import ModelActionBar from './components/pet/ModelActionBar'
 import SpeechBubble from './components/pet/SpeechBubble'
-import ChatPanel from './components/chat/ChatPanel'
 import MusicPanel from './components/music/MusicPanel'
 import PomodoroPanel from './components/pomodoro/PomodoroPanel'
 import TodoPanel from './components/todo/TodoPanel'
@@ -17,6 +19,8 @@ export default function App(): JSX.Element {
   const panel = useUIStore((s) => s.panel)
   const setPanel = useUIStore((s) => s.setPanel)
   const locked = usePetStore((s) => s.locked)
+  const interactionEnabled = usePetStore((s) => s.interactionEnabled)
+  const modelReady = usePetStore((s) => s.modelReady)
   const scale = usePetStore((s) => s.scale)
   const setScale = usePetStore((s) => s.setScale)
   const musicPlaying = useMusicStore((s) => s.playing)
@@ -25,15 +29,45 @@ export default function App(): JSX.Element {
   const loadMusic = useMusicStore((s) => s.loadSongs)
   const modelExpressions = useModelActionsStore((s) => s.expressions)
   const modelMotions = useModelActionsStore((s) => s.motions)
+  const [resetFlash, setResetFlash] = useState(false)
+  const [chatOpen, setChatOpen] = useState(false)
+  const resetTimer = useRef(0)
+  useEffect(() => () => window.clearTimeout(resetTimer.current), [])
+
+  useEffect(() => {
+    const offState = window.api.chatWindow.onState(setChatOpen)
+    void window.api.chatWindow.getOpen().then(setChatOpen)
+    const offSpeaking = window.api.chatWindow.onSpeaking(speaking => {
+      const speech = useSpeechStore.getState()
+      if (speaking) speech.startSpeaking()
+      else speech.stopSpeaking()
+    })
+    return () => { offState(); offSpeaking(); useSpeechStore.getState().stopSpeaking() }
+  }, [])
 
   const toggle = (p: NonNullable<typeof panel>): void => setPanel(panel === p ? null : p)
 
   /** 模型复位：平移归零（回窗口正中）+ 缩放回 1×，并立即持久化 */
   const resetModel = (): void => {
+    window.clearTimeout(resetTimer.current)
+    setResetFlash(true)
+    resetTimer.current = window.setTimeout(() => setResetFlash(false), 700)
+    petInteractionRef.current?.cancel()
+    useInteractionStore.getState().clear()
     const s = usePetStore.getState()
     s.setScale(1)
     s.setOffset(0, 0)
     void window.api.setConfig({ pet: { scale: 1, offsetX: 0, offsetY: 0 } })
+  }
+
+  const toggleInteraction = (): void => {
+    const enabled = !usePetStore.getState().interactionEnabled
+    usePetStore.getState().setInteractionEnabled(enabled)
+    if (enabled) useInteractionStore.getState().show('互动已开启，试着点点我的头、脸或手吧～')
+    else useInteractionStore.getState().clear()
+    void window.api.setConfig({ pet: { interactionEnabled: enabled } }).catch(() => {
+      useInteractionStore.getState().show('开关已生效，但没能保存，下次打开时请重新设置。')
+    })
   }
 
   // 全局加载音乐（关闭面板也继续播）
@@ -41,55 +75,81 @@ export default function App(): JSX.Element {
     void loadMusic()
   }, [loadMusic])
 
-  // 锁定模式：全窗口可交互；未锁定：默认穿透，悬停工具栏/面板才可点
+  // 工具栏/面板始终可点；开启互动后，模型可见部分也接收点击。
   useEffect(() => {
-    void window.api.setClickThrough(!locked)
-  }, [locked])
-
-  useEffect(() => {
-    if (locked) return
+    if (locked) {
+      void window.api.setClickThrough(false)
+      return
+    }
     let lastClickable: boolean | null = null
+    let frame = 0
+    void window.api.setClickThrough(!document.querySelector('.toolbar:hover, .panel:hover, .zoom-control:hover'))
     const onMove = (e: MouseEvent): void => {
-      const el = document.elementFromPoint(e.clientX, e.clientY)
-      const clickable = !!el?.closest?.('.toolbar, .panel')
-      if (clickable !== lastClickable) {
-        lastClickable = clickable
-        void window.api.setClickThrough(!clickable)
-      }
+      cancelAnimationFrame(frame)
+      frame = requestAnimationFrame(() => {
+        const el = document.elementFromPoint(e.clientX, e.clientY)
+        const clickable = !!el?.closest?.('.toolbar, .panel, .zoom-control') ||
+          (interactionEnabled && !!petInteractionRef.current?.hitAt(e.clientX, e.clientY))
+        if (clickable !== lastClickable) {
+          lastClickable = clickable
+          void window.api.setClickThrough(!clickable)
+        }
+      })
     }
     window.addEventListener('mousemove', onMove)
-    return () => window.removeEventListener('mousemove', onMove)
-  }, [locked])
+    return () => {
+      cancelAnimationFrame(frame)
+      window.removeEventListener('mousemove', onMove)
+    }
+  }, [locked, interactionEnabled, modelReady])
 
   // 锁定模式下：左键拖动 → 移动整个窗口（工具栏/面板/缩放条除外）
   useEffect(() => {
     if (!locked) return
+    let cleanupDrag: (() => void) | undefined
     const onDown = (e: MouseEvent): void => {
       if (e.button !== 0) return
       const target = e.target as HTMLElement | null
       if (target?.closest?.('.toolbar, .panel, .zoom-control, button, input, select, textarea')) return
       const sx = e.screenX
       const sy = e.screenY
-      void window.api.getPetPosition().then(([wx, wy]) => {
-        const onMove = (ev: MouseEvent): void => {
-          void window.api.setPetPosition(wx + (ev.screenX - sx), wy + (ev.screenY - sy))
-        }
-        const onUp = (): void => {
-          window.removeEventListener('mousemove', onMove)
-          window.removeEventListener('mouseup', onUp)
-          // 松手后钳制一次再保存（拖动中不钳制，避免晃动）
-          void window.api.clampPosition().then(() =>
-            void window.api.getPetPosition().then(([x, y]) =>
-              void window.api.setConfig({ pet: { winX: x, winY: y } })
-            )
+      cleanupDrag?.()
+      let active = true
+      let moved = false
+      let position: number[] | null = null
+      const onMove = (ev: MouseEvent): void => {
+        if (!position || Math.hypot(ev.screenX - sx, ev.screenY - sy) < CLICK_DISTANCE && !moved) return
+        moved = true
+        void window.api.setPetPosition(position[0] + ev.screenX - sx, position[1] + ev.screenY - sy)
+      }
+      const cleanup = (): void => {
+        active = false
+        window.removeEventListener('mousemove', onMove)
+        window.removeEventListener('mouseup', onUp)
+        window.removeEventListener('blur', cleanup)
+      }
+      const onUp = (): void => {
+        cleanup()
+        if (!moved) return
+        void window.api.clampPosition().then(() =>
+          window.api.getPetPosition().then(([x, y]) =>
+            window.api.setConfig({ pet: { winX: x, winY: y } })
           )
-        }
-        window.addEventListener('mousemove', onMove)
-        window.addEventListener('mouseup', onUp)
+        )
+      }
+      cleanupDrag = cleanup
+      window.addEventListener('mousemove', onMove)
+      window.addEventListener('mouseup', onUp)
+      window.addEventListener('blur', cleanup)
+      void window.api.getPetPosition().then(([wx, wy]) => {
+        if (active) position = [wx, wy]
       })
     }
     window.addEventListener('mousedown', onDown)
-    return () => window.removeEventListener('mousedown', onDown)
+    return () => {
+      cleanupDrag?.()
+      window.removeEventListener('mousedown', onDown)
+    }
   }, [locked])
 
   return (
@@ -111,15 +171,28 @@ export default function App(): JSX.Element {
       )}
 
       <div className="toolbar">
-        <button title="对话" onClick={() => toggle('chat')}>💬</button>
-        <button title="音乐" onClick={() => toggle('music')}>🎵</button>
-        <button title="番茄钟" onClick={() => toggle('pomodoro')}>🍅</button>
-        <button title="待办" onClick={() => toggle('todo')}>✅</button>
-        <button title="日记" onClick={() => toggle('diary')}>📖</button>
+        <button className="toolbar-button" aria-pressed={chatOpen} title="对话" onClick={() => {
+          void window.api.chatWindow.setOpen(!chatOpen).then(setChatOpen)
+        }}>对话</button>
+        <button className="toolbar-button" aria-pressed={panel === 'music'} title="音乐" onClick={() => toggle('music')}>音乐</button>
+        <button className="toolbar-button" aria-pressed={panel === 'pomodoro'} title="番茄钟" onClick={() => toggle('pomodoro')}>番茄</button>
+        <button className="toolbar-button" aria-pressed={panel === 'todo'} title="待办" onClick={() => toggle('todo')}>待办</button>
+        <button className="toolbar-button" aria-pressed={panel === 'diary'} title="日记" onClick={() => toggle('diary')}>日记</button>
+        <button
+          className="toolbar-button interaction-toggle"
+          role="switch"
+          aria-label="互动"
+          aria-checked={interactionEnabled}
+          disabled={!modelReady}
+          title={!modelReady ? '请先加载 Live2D 模型' : interactionEnabled ? '关闭互动' : '开启互动：点击模型不同部位'}
+          onClick={toggleInteraction}
+        >
+          互动
+        </button>
         {/* 模型表情/动作：与其它按钮同级，随时可用（不再依赖锁定模式） */}
         <ModelActionBar expressions={modelExpressions} motions={modelMotions} />
-        <button title="复位模型（回中心 + 1×）" onClick={resetModel}>⟲</button>
-        <button title="设置" onClick={() => toggle('settings')}>⚙️</button>
+        <button className="toolbar-button" data-flash={resetFlash} title="复位模型（回中心 + 1×）" onClick={resetModel}>复位</button>
+        <button className="toolbar-button" aria-pressed={panel === 'settings'} title="设置" onClick={() => toggle('settings')}>设置</button>
       </div>
 
       {/* 锁定模式：浮动缩放滑条（桌宠边） */}
@@ -138,13 +211,12 @@ export default function App(): JSX.Element {
             }}
           />
           <span className="zoom-val">{scale.toFixed(2)}×</span>
-          <button className="zoom-reset" title="复位：回到中心 + 缩放 1×" onClick={resetModel}>
+          <button className="zoom-reset" data-flash={resetFlash} title="复位：回到中心 + 缩放 1×" onClick={resetModel}>
             ⟲
           </button>
         </div>
       )}
 
-      {panel === 'chat' && <ChatPanel />}
       {panel === 'music' && <MusicPanel />}
       {panel === 'pomodoro' && <PomodoroPanel />}
       {panel === 'todo' && <TodoPanel />}

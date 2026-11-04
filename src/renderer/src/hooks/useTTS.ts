@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useSpeechStore } from '../store/speech'
 
 interface CachedAudio {
@@ -26,6 +26,15 @@ export function useTTS(): {
   const audioRef = useRef<HTMLAudioElement | null>(null)
   const cacheRef = useRef<Map<string, CachedAudio>>(new Map())
   const [error, setError] = useState<string | null>(null)
+  const notifySpeaking = (speaking: boolean): void => {
+    if (window.location.hash === '#chat') window.api.chatWindow.setSpeaking(speaking)
+  }
+
+  useEffect(() => () => {
+    audioRef.current?.pause()
+    useSpeechStore.getState().stopSpeaking()
+    notifySpeaking(false)
+  }, [])
 
   const speak = useCallback(async (text: string): Promise<boolean> => {
     const clean = sanitizeForTts(text)
@@ -45,10 +54,14 @@ export function useTTS(): {
       // 口型联动：开播驱动，播完停止
       const speech = useSpeechStore.getState()
       speech.startSpeaking()
-      audio.onended = () => speech.stopSpeaking()
+      notifySpeaking(true)
+      audio.onended = () => { speech.stopSpeaking(); notifySpeaking(false) }
+      audio.onerror = () => { speech.stopSpeaking(); notifySpeaking(false) }
       await audio.play()
       return true
     } catch (e) {
+      useSpeechStore.getState().stopSpeaking()
+      notifySpeaking(false)
       const msg = e instanceof Error ? e.message : String(e)
       setError(msg)
       console.error('[tts] 播放/合成失败：', msg)
@@ -60,6 +73,7 @@ export function useTTS(): {
     audioRef.current?.pause()
     audioRef.current = null
     useSpeechStore.getState().stopSpeaking()
+    notifySpeaking(false)
   }, [])
 
   return { speak, stop, error }

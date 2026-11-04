@@ -1,6 +1,6 @@
 import { app } from 'electron'
 import { closeSync, existsSync, openSync, readdirSync, readFileSync, readSync, statSync } from 'node:fs'
-import { dirname, join, relative, sep } from 'node:path'
+import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path'
 import type { ModelAction, ModelActionsInfo, ModelInfo, TextureSizeInfo } from '../../shared/types'
 import { externalModelsDir } from '../paths'
 
@@ -207,15 +207,34 @@ export function discoverModelActions(model3Path: string): ModelActionsInfo {
     if (list.length === 0) continue
     list.forEach((m, i) => {
       // 只有一个动作时直接显示组名；多个才加序号，避免「Extra 1」这种没信息量的名字
-      const label = list.length === 1 ? group : `${group} ${i + 1}`
+      const label = group === 'Extra' ? fileStem(m.File) : list.length === 1 ? group : `${group} ${i + 1}`
       motions.push({
         name: label,
         kind: 'motion',
         group,
-        index: i
+        index: i,
+        file: norm(m.File)
       })
     })
   }
 
-  return { modelJSON: raw, expressions, motions }
+  const partNames: Record<string, string> = Object.create(null)
+  const displayFile = fileRefs.DisplayInfo
+  if (typeof displayFile === 'string' && /\.cdi3\.json$/i.test(displayFile)) {
+    const displayPath = resolve(modelDir, displayFile)
+    const inside = relative(modelDir, displayPath)
+    if (!isAbsolute(inside) && inside !== '..' && !inside.startsWith(`..${sep}`)) {
+      try {
+        const display = JSON.parse(readFileSync(displayPath, 'utf8'))
+        for (const part of Array.isArray(display.Parts) ? display.Parts : []) {
+          if (typeof part.Id === 'string' && typeof part.Name === 'string') {
+            partNames[part.Id] = part.Name
+          }
+        }
+      } catch {
+        // DisplayInfo 可选；缺失时仍可按 HitAreas / 模型内的相对位置互动。
+      }
+    }
+  }
+  return { modelJSON: raw, expressions, motions, partNames }
 }
