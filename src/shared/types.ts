@@ -1,11 +1,28 @@
 // 主进程 / 渲染进程共享的类型定义
+import type { ControlApiConfig, PerformanceCue } from './control'
 
 export interface ChatMessage {
   role: 'system' | 'user' | 'assistant'
   content: string
   /** 用于 TTS 的文本（通常是日语版）；为空则用 content */
   speakText?: string
+  performance?: PerformanceCue
+  images?: ChatImage[]
 }
+
+export interface ChatImage {
+  id: string
+  name: string
+  dataUrl: string
+  width: number
+  height: number
+}
+
+export type ChatPresentation =
+  | { type: 'start'; id: string; text: string; speaking: boolean; durationMs: number }
+  | { type: 'progress'; id: string; progress: number }
+  | { type: 'end'; id: string }
+  | { type: 'clear' }
 
 /**
  * 角色设定：让同一个桌宠程序可以装不同的「角色」。
@@ -112,6 +129,8 @@ export interface PetConfig {
   locked: boolean
   /** 点击模型不同部位播放动作和离线台词 */
   interactionEnabled: boolean
+  /** 拖动框架靠近显示器工作区边缘时自动吸附 */
+  edgeSnapEnabled: boolean
   /** 眼球追踪鼠标（眼睛跟随光标） */
   eyeTracking: boolean
   /** 眼球追踪幅度（乘数，1 = 默认） */
@@ -125,6 +144,8 @@ export interface PetConfig {
 }
 
 export interface ChatConfig {
+  /** 根据 AI 回复中的情绪指令驱动表情和动作 */
+  performanceEnabled: boolean
   /** 桌宠人设 / 对话规则（系统提示词主体） */
   persona: string
   /** 语音输出规则（告诉模型如何输出「日语：」行） */
@@ -140,6 +161,7 @@ export interface AppConfig {
   siyuan: SiyuanConfig
   pet: PetConfig
   chat: ChatConfig
+  controlApi: ControlApiConfig
 }
 
 export interface TtsResult {

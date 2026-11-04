@@ -6,6 +6,7 @@ interface PetState {
   opacity: number
   locked: boolean
   interactionEnabled: boolean
+  edgeSnapEnabled: boolean
   modelReady: boolean
   offsetX: number
   offsetY: number
@@ -18,6 +19,7 @@ interface PetState {
   setOpacity: (opacity: number) => void
   setLocked: (locked: boolean) => void
   setInteractionEnabled: (enabled: boolean) => void
+  setEdgeSnapEnabled: (enabled: boolean) => void
   setModelReady: (ready: boolean) => void
   setOffset: (offsetX: number, offsetY: number) => void
   setEyeTracking: (eyeTracking: boolean) => void
@@ -34,6 +36,7 @@ export const usePetStore = create<PetState>((set) => ({
   opacity: 1,
   locked: false,
   interactionEnabled: false,
+  edgeSnapEnabled: false,
   modelReady: false,
   offsetX: 0,
   offsetY: 0,
@@ -46,6 +49,7 @@ export const usePetStore = create<PetState>((set) => ({
   setOpacity: (opacity) => set({ opacity }),
   setLocked: (locked) => set({ locked }),
   setInteractionEnabled: (interactionEnabled) => set({ interactionEnabled }),
+  setEdgeSnapEnabled: (edgeSnapEnabled) => set({ edgeSnapEnabled }),
   setModelReady: (modelReady) => set({ modelReady }),
   setOffset: (offsetX, offsetY) => set({ offsetX, offsetY }),
   setEyeTracking: (eyeTracking) => set({ eyeTracking }),

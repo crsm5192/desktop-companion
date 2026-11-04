@@ -1,5 +1,12 @@
 // IPC 通道名统一定义，避免主/渲染两端字符串漂移
 export const IPC = {
+  ControlExecute: 'control:execute',
+  ControlCommand: 'control:command',
+  ControlReply: 'control:reply',
+  ControlReady: 'control:ready',
+  ControlEvent: 'control:event',
+  ControlStatus: 'control:status',
+  SpeechLevel: 'pet:speech-level',
   ConfigGet: 'config:get',
   ConfigSet: 'config:set',
   ConfigChanged: 'config:changed',
@@ -13,9 +20,11 @@ export const IPC = {
   MusicList: 'music:list',
 
   ChatStream: 'chat:stream',
+  ChatPromptGet: 'chat:prompt-get',
   ChatChunk: 'chat:chunk',
   ChatDone: 'chat:done',
   ChatError: 'chat:error',
+  ChatPresentation: 'chat:presentation',
   ChatHistoryGet: 'chat:history:get',
   ChatHistoryAdd: 'chat:history:add',
   ChatHistoryClear: 'chat:history:clear',
@@ -43,6 +52,7 @@ export const IPC = {
   SiyuanSyncTodo: 'siyuan:sync-todo',
 
   PetSetClickThrough: 'pet:set-click-through',
+  PetResetModel: 'pet:reset-model',
   PetGetPosition: 'pet:get-position',
   PetSetPosition: 'pet:set-position',
   PetClampPosition: 'pet:clamp-position',

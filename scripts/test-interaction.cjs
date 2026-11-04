@@ -348,7 +348,7 @@ try {
     assert.deepEqual([...core.parameters.values], baseValues)
     blend.destroy()
   })
-  test('near-limit poses clamp to actual rig bounds and release all temporary overrides', () => {
+  test('raised-hand rig limits joint excursions, avoids overlapping arms and releases overrides', () => {
     const ids = ['ParamBodyAngleX', 'ParamBodyAngleY', 'ParamBodyAngleZ', 'ShoulderY', 'ShoulderZ',
       'HipAngleX', 'HipAngleZ', 'LEGAngleZ2', 'LArm', 'LForearm', 'LWrist', 'RArm', 'ParamMouthForm',
       'EyeSmile', 'ParamEyeLOpen', 'ParamEyeROpen', 'AngleX', 'AngleY', 'AngleZ', 'PositionX', 'PositionY',
@@ -372,12 +372,27 @@ try {
         for (const [id, { value }] of overrides) {
           const i = ids.indexOf(id)
           assert(Number.isFinite(value) && value >= min[i] && value <= max[i], `${region} exceeds actual ${id} bounds`)
+          const excursion = Math.abs(value - baseline[i]) / Math.abs((value < baseline[i] ? min[i] : max[i]) - baseline[i])
+          if (['LArm', 'LForearm', 'LWrist', 'RArm'].includes(id)) assert(excursion < 0.15, `${region} overdrives resting joint ${id}`)
+          if (id === 'Param62') assert(excursion < 0.07, `${region} overrotates the upper arm`)
+          if (id === 'Param61') assert(excursion < 0.18, `${region} overrotates the wrist`)
+          if (id === 'Param60') assert(excursion < 0.75, `${region} overbends the elbow`)
         }
       }
       }
     }
     rig.applyJoints(presets.interactionPose('hand', 2200))
-    assert(overrides.get('Param62').value > 0.9 && overrides.get('Param60').value > 0.9)
+    assert(overrides.get('Movement2').value > 0.9, 'hand switch still fully raises the hand')
+    assert(overrides.get('Param60').value > 0.5, 'elbow still visibly bends')
+    assert(Math.abs(overrides.get('LArm').value - baseline[ids.indexOf('LArm')]) < 1e-6, 'resting-arm gesture fades out when the hand is raised')
+    assert(!overrides.has('Param56') && !overrides.has('Param57'), 'hand gestures leave tail lighting alone')
+    let previousWrist
+    for (let ms = 0; ms <= presets.INTERACTION_DURATION; ms += 20) {
+      rig.applyJoints(presets.interactionPose('hand', ms))
+      const wrist = overrides.get('Param61').value
+      if (previousWrist !== undefined) assert(Math.abs(wrist - previousWrist) < 0.04, 'wrist reversal stays gradual')
+      previousWrist = wrist
+    }
     rig.cancel()
     assert.deepEqual([...core.parameters.values], baseline)
     for (const { weight } of overrides.values()) assert.equal(weight, 0)

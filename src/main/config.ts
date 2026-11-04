@@ -1,7 +1,9 @@
 import { app } from 'electron'
+import { randomBytes } from 'node:crypto'
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import type { AppConfig, DeepPartial } from '../shared/types'
+import { mergeControlApi } from '../shared/control'
 import { externalConfigFile } from './paths'
 
 // 默认配置 —— 请按你自己的环境修改（也可在设置面板或 config.json 里改）：
@@ -58,6 +60,7 @@ const DEFAULT_CONFIG: AppConfig = {
     clickThrough: false,
     locked: false,
     interactionEnabled: false,
+    edgeSnapEnabled: false,
     eyeTracking: true,
     eyeTrackingStrength: 1.0,
     offsetX: 0,
@@ -66,13 +69,15 @@ const DEFAULT_CONFIG: AppConfig = {
     winY: null
   },
   chat: {
+    performanceEnabled: true,
     persona: `你是一个可爱的二次元桌宠伴侣，住在用户电脑桌面上。
 要求：
 1. 用中文聊天，语气自然亲切、有温度，像一个关心用户的朋友。
 2. 回复正文里绝对不要出现：文件路径、🎧 符号、「语音」字样、「翻译」字样、不要生成或提及任何音频文件。`,
     voiceRule: `在回复的最后一行，单独写「日语：」开头，给出这段回复的日语口语版（用于语音合成）。日语要自然，不要敬语腔。`,
     historyLimit: 30
-  }
+  },
+  controlApi: { enabled: true, endpoint: 'ws://127.0.0.1:18790', port: 18790, token: '' }
 }
 
 let cache: AppConfig | null = null
@@ -89,7 +94,8 @@ function mergeConfig(base: AppConfig, patch: DeepPartial<AppConfig>): AppConfig 
     tts: { ...base.tts, ...(patch.tts ?? {}), server: { ...base.tts.server, ...(patch.tts?.server ?? {}) } },
     siyuan: { ...base.siyuan, ...(patch.siyuan ?? {}) },
     pet: { ...base.pet, ...(patch.pet ?? {}) },
-    chat: { ...base.chat, ...(patch.chat ?? {}) }
+    chat: { ...base.chat, ...(patch.chat ?? {}) },
+    controlApi: mergeControlApi(base.controlApi, patch.controlApi)
   }
 }
 
@@ -109,7 +115,7 @@ function migrateLegacyKeys(raw: Record<string, unknown>): Record<string, unknown
 export function getConfig(): AppConfig {
   if (cache) return cache
   const f = configFile()
-  let loaded = DEFAULT_CONFIG
+  let loaded = mergeConfig(DEFAULT_CONFIG, {})
   try {
     if (existsSync(f)) {
       const raw = JSON.parse(readFileSync(f, 'utf-8')) as Record<string, unknown>
@@ -118,12 +124,19 @@ export function getConfig(): AppConfig {
   } catch (e) {
     console.error('[config] 读取失败，回退默认配置：', e)
   }
+  if (!loaded.controlApi.token) {
+    loaded = { ...loaded, controlApi: { ...loaded.controlApi, token: randomBytes(24).toString('hex') } }
+    mkdirSync(dirname(f), { recursive: true })
+    writeFileSync(f, JSON.stringify(loaded, null, 2), 'utf-8')
+  }
   cache = loaded
   return loaded
 }
 
 export function setConfig(patch: DeepPartial<AppConfig>): AppConfig {
   const next = mergeConfig(getConfig(), patch)
+  if (!Number.isInteger(next.controlApi.port) || next.controlApi.port < 1024 || next.controlApi.port > 65535) throw new Error('控制端口必须是 1024 到 65535 的整数')
+  if (typeof next.controlApi.token !== 'string' || next.controlApi.token.length < 16 || next.controlApi.token.length > 256) throw new Error('连接令牌必须为 16 到 256 个字符')
   cache = next
   const f = configFile()
   mkdirSync(dirname(f), { recursive: true })

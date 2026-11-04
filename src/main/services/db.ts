@@ -4,10 +4,12 @@ import { randomUUID } from 'node:crypto'
 import { dirname, join } from 'node:path'
 import initSqlJs, { type Database } from 'sql.js'
 import type { ChatMessage, DiaryEntry, TodoItem } from '../../shared/types'
+import { validateChatImages } from '../../shared/chatContent'
 import { appRootDir } from '../paths'
 
 let SQL: Awaited<ReturnType<typeof initSqlJs>> | null = null
 let db: Database | null = null
+let dbReady: Promise<Database> | null = null
 
 function dbFile(): string {
   return app.isPackaged
@@ -21,7 +23,7 @@ function wasmPath(): string {
     : join(app.getAppPath(), 'node_modules', 'sql.js', 'dist', 'sql-wasm.wasm')
 }
 
-async function getDb(): Promise<Database> {
+async function openDb(): Promise<Database> {
   if (db) return db
   if (!SQL) SQL = await initSqlJs({ locateFile: () => wasmPath() })
   const f = dbFile()
@@ -33,6 +35,11 @@ async function getDb(): Promise<Database> {
   initTables(db)
   migrateFromJson(db)
   return db
+}
+
+function getDb(): Promise<Database> {
+  if (!dbReady) dbReady = openDb().catch(error => { dbReady = null; throw error })
+  return dbReady
 }
 
 /** sql.js 是内存库，每次写后导出到磁盘 */
@@ -65,6 +72,10 @@ function initTables(d: Database): void {
       updated_at INTEGER NOT NULL
     );
   `)
+  const columns = queryRows<{ name: string }>(d, 'PRAGMA table_info(chat_messages)')
+  for (const column of ['images_json', 'performance_json']) {
+    if (!columns.some(item => item.name === column)) d.run(`ALTER TABLE chat_messages ADD COLUMN ${column} TEXT`)
+  }
   save()
 }
 
@@ -111,21 +122,24 @@ function migrateFromJson(d: Database): void {
 // ---------- 聊天 ----------
 export async function dbListChat(limit = 100): Promise<ChatMessage[]> {
   const d = await getDb()
-  const rows = queryRows<{ role: string; content: string; speak_text: string | null }>(
-    d, 'SELECT role, content, speak_text FROM chat_messages ORDER BY id DESC LIMIT ?', [limit]
+  const rows = queryRows<{ role: string; content: string; speak_text: string | null; images_json: string | null; performance_json: string | null }>(
+    d, 'SELECT role, content, speak_text, images_json, performance_json FROM chat_messages ORDER BY id DESC LIMIT ?', [limit]
   )
   return rows.reverse().map((r) => ({
     role: r.role as ChatMessage['role'],
     content: r.content,
-    speakText: r.speak_text ?? undefined
+    speakText: r.speak_text ?? undefined,
+    images: r.images_json ? JSON.parse(r.images_json) : undefined,
+    performance: r.performance_json ? JSON.parse(r.performance_json) : undefined
   }))
 }
 
 export async function dbAddChat(msgs: ChatMessage[]): Promise<void> {
   const d = await getDb()
   const now = Date.now()
-  for (const m of msgs) {
-    d.run('INSERT INTO chat_messages (role, content, speak_text, created_at) VALUES (?, ?, ?, ?)', [m.role, m.content, m.speakText ?? null, now])
+  const normalized = msgs.map(message => ({ ...message, images: validateChatImages(message.images) }))
+  for (const m of normalized) {
+    d.run('INSERT INTO chat_messages (role, content, speak_text, created_at, images_json, performance_json) VALUES (?, ?, ?, ?, ?, ?)', [m.role, m.content, m.speakText ?? null, now, m.images.length ? JSON.stringify(m.images) : null, m.performance ? JSON.stringify(m.performance) : null])
   }
   save()
 }

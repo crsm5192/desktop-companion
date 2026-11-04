@@ -1,8 +1,27 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import { IPC } from '../shared/constants'
-import type { AppConfig, ChatMessage, DeepPartial, DiaryEntry, ModelActionsInfo, ModelInfo, MusicInfo, SiyuanConfig, SiyuanNotebook, SiyuanSyncResult, TextureSizeInfo, TodoItem, TtsConfig, TtsResult } from '../shared/types'
+import type { ControlCommand, ControlReply, ModelCapabilities } from '../shared/control'
+import type { AppConfig, ChatMessage, ChatPresentation, DeepPartial, DiaryEntry, ModelActionsInfo, ModelInfo, MusicInfo, SiyuanConfig, SiyuanNotebook, SiyuanSyncResult, TextureSizeInfo, TodoItem, TtsConfig, TtsResult } from '../shared/types'
 
 const api = {
+  control: {
+    execute: (command: ControlCommand): Promise<unknown> => ipcRenderer.invoke(IPC.ControlExecute, command),
+    status: (): Promise<{ enabled: boolean; listening: boolean; endpoint: string; host: string; port: number; modelReady: boolean; error?: string }> => ipcRenderer.invoke(IPC.ControlStatus),
+    ready: (capabilities: ModelCapabilities | null): void => ipcRenderer.send(IPC.ControlReady, capabilities),
+    reply: (reply: ControlReply): void => ipcRenderer.send(IPC.ControlReply, reply),
+    emit: (type: string, data: unknown): void => ipcRenderer.send(IPC.ControlEvent, { type, data }),
+    onCommand: (callback: (request: ControlCommand & { id: string }) => void): (() => void) => {
+      const listener = (_event: unknown, request: ControlCommand & { id: string }): void => callback(request)
+      ipcRenderer.on(IPC.ControlCommand, listener)
+      return () => ipcRenderer.removeListener(IPC.ControlCommand, listener)
+    },
+    speechLevel: (speaking: boolean, level: number): void => ipcRenderer.send(IPC.SpeechLevel, { speaking, level }),
+    onSpeechLevel: (callback: (payload: { speaking: boolean; level: number }) => void): (() => void) => {
+      const listener = (_event: unknown, payload: { speaking: boolean; level: number }): void => callback(payload)
+      ipcRenderer.on(IPC.SpeechLevel, listener)
+      return () => ipcRenderer.removeListener(IPC.SpeechLevel, listener)
+    }
+  },
   getConfig: (): Promise<AppConfig> => ipcRenderer.invoke(IPC.ConfigGet),
   setConfig: (patch: DeepPartial<AppConfig>): Promise<AppConfig> => ipcRenderer.invoke(IPC.ConfigSet, patch),
   onConfigChanged: (cb: () => void): (() => void) => {
@@ -29,6 +48,13 @@ const api = {
   },
 
   chat: {
+    present: (payload: ChatPresentation): void => ipcRenderer.send(IPC.ChatPresentation, payload),
+    onPresentation: (callback: (payload: ChatPresentation) => void): (() => void) => {
+      const listener = (_event: unknown, payload: ChatPresentation): void => callback(payload)
+      ipcRenderer.on(IPC.ChatPresentation, listener)
+      return () => ipcRenderer.removeListener(IPC.ChatPresentation, listener)
+    },
+    prompt: (target: 'chat' | 'agent' = 'chat'): Promise<string> => ipcRenderer.invoke(IPC.ChatPromptGet, target),
     send: (messages: ChatMessage[]): void => {
       ipcRenderer.send(IPC.ChatStream, messages)
     },
@@ -107,6 +133,11 @@ const api = {
   },
 
   setClickThrough: (ignore: boolean): Promise<void> => ipcRenderer.invoke(IPC.PetSetClickThrough, ignore),
+  onModelReset: (callback: () => void): (() => void) => {
+    const listener = (): void => callback()
+    ipcRenderer.on(IPC.PetResetModel, listener)
+    return () => ipcRenderer.removeListener(IPC.PetResetModel, listener)
+  },
   getPetPosition: (): Promise<[number, number]> => ipcRenderer.invoke(IPC.PetGetPosition),
   setPetPosition: (x: number, y: number): Promise<void> => ipcRenderer.invoke(IPC.PetSetPosition, x, y),
   clampPosition: (): Promise<void> => ipcRenderer.invoke(IPC.PetClampPosition),

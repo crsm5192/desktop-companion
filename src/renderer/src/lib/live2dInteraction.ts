@@ -2,6 +2,7 @@ import { Priority, type Live2DSprite } from 'easy-live2d'
 import type { ModelActionsInfo } from '@shared/types'
 import { usePetStore } from '../store/pet'
 import { useInteractionStore } from '../store/interaction'
+import { adaptHandChannels, hasRaisedHandRig } from './live2dHandRig'
 import {
   CLICK_DISTANCE, INTERACTION_COOLDOWN, INTERACTION_DURATION, chooseInteractionActions,
   interactionPose, petInteractionRef, pointInTriangle, regionFromName, regionFromPosition, smoothStep,
@@ -198,8 +199,7 @@ export function attachPetInteraction(sprite: Live2DSprite, canvas: HTMLCanvasEle
   }
 
   const parameterIndex = new Map(core.parameters.ids.map((id, i) => [id, i]))
-  const raisedHandRig = ['Movement2', 'Param56', 'Param57', 'Param62', 'Param59', 'Param60', 'Param61']
-    .every(id => parameterIndex.has(id))
+  const raisedHandRig = hasRaisedHandRig(new Set(core.parameters.ids))
   const hasJointRig = parameterIndex.has('ParamBodyAngleX')
   const hasFaceRig = parameterIndex.has('ParamMouthForm') || parameterIndex.has('EyeSmile')
   const overridden = new Set<string>()
@@ -229,10 +229,16 @@ export function attachPetInteraction(sprite: Live2DSprite, canvas: HTMLCanvasEle
       overridden.add(id)
     }
     drive('ParamBodyAngleX', pose.bodyX); drive('ParamBodyAngleY', pose.bodyY); drive('ParamBodyAngleZ', pose.bodyZ)
-    drive('ShoulderY', pose.shoulder); drive('ShoulderZ', pose.bodyZ * 0.5)
     drive('HipAngleZ', pose.hip); drive('HipAngleX', -pose.bodyX * 0.3); drive('LEGAngleZ2', pose.legs)
-    drive('LArm', -pose.arm); drive('LForearm', pose.forearm); drive('LWrist', pose.wrist)
-    drive('RArm', pose.rightArm)
+    const handChannels: Record<string, number> = {
+      ShoulderY: pose.shoulder, ShoulderZ: pose.bodyZ * 0.5,
+      LArm: -pose.arm, LForearm: pose.forearm, LWrist: pose.wrist, RArm: pose.rightArm
+    }
+    if (raisedHandRig) Object.assign(handChannels, {
+      Movement2: pose.handPose, Param62: pose.arm, Param59: pose.handPose * 0.55,
+      Param60: pose.forearm, Param61: pose.wrist
+    })
+    for (const [id, amount] of Object.entries(adaptHandChannels(handChannels, raisedHandRig))) drive(id, amount)
     drive('ParamMouthForm', pose.smile); drive('EyeSmile', pose.smile * 0.6)
     drive('ParamEyeLOpen', Math.max(pose.blink, pose.blinkLeft), 0)
     drive('ParamEyeROpen', Math.max(pose.blink, pose.blinkRight), 0)
@@ -241,14 +247,6 @@ export function attachPetInteraction(sprite: Live2DSprite, canvas: HTMLCanvasEle
       // so hair, clothes and the rest of the body follow the authored joint motion.
       drive('AngleX', pose.angleX / 30); drive('AngleY', pose.angleY / 30); drive('AngleZ', pose.angleZ / 30)
       drive('PositionX', pose.bodyX); drive('PositionY', pose.bodyY); drive('PositionZ', pose.bodyZ)
-      drive('Movement2', pose.handPose, 1)
-      drive('Param56', pose.handPose, 1); drive('Param57', pose.handPose, 0)
-      // Open the upper arm first, then bend the elbow and wave the wrist.
-      // Perspective is a supporting deformation, so it keeps a moderate value.
-      drive('Param62', pose.arm, 0.96)
-      drive('Param59', pose.handPose, 0.55)
-      drive('Param60', pose.forearm, 0.98)
-      drive('Param61', Math.max(pose.handPose, Math.abs(pose.wrist)), pose.wrist)
     }
   }
   const physics = internal._model._physics
@@ -366,7 +364,9 @@ export function attachPetInteraction(sprite: Live2DSprite, canvas: HTMLCanvasEle
     cancel,
     headPosition,
     applyJoints,
-    setManualExpression: (name: string): void => { manualExpression = name },
+    setManualExpression: (name?: string): void => { manualExpression = name },
+    getManualExpression: (): string | undefined => manualExpression,
+    resetExpressions: (): void => { manualExpression = undefined; clearExpressions() },
     pose: () => {
       if (reaction && performance.now() - reaction.started >= INTERACTION_DURATION) cancel()
       return currentPose(performance.now())

@@ -2,6 +2,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import type { CSSProperties } from 'react'
 import { useInteractionStore } from '../../store/interaction'
 import { usePetStore } from '../../store/pet'
+import { useReplyBubbleStore } from '../../store/replyBubble'
 import { INTERACTIONS, INTERACTION_SPEECH_DURATION } from '../../lib/petInteraction'
 import { placeSpeechBubble } from '../../lib/speechPosition'
 
@@ -34,8 +35,17 @@ interface BubbleState {
 export default function SpeechBubble(): JSX.Element | null {
   const [bubble, setBubble] = useState<BubbleState | null>(null)
   const interaction = useInteractionStore((s) => s.message)
+  const reply = useReplyBubbleStore(s => s.message)
   const anchorRef = useRef<HTMLDivElement>(null)
-  const visible = interaction ? { text: interaction.text, shape: 'round', color: '#cfe6ff' } : bubble
+  const visible = reply ? { text: reply.pages[reply.page], shape: 'round', color: '#eee4f5' }
+    : interaction ? { text: interaction.text, shape: 'round', color: '#cfe6ff' } : bubble
+
+  useEffect(() => {
+    const timer = window.setInterval(() => useReplyBubbleStore.getState().tick(), 150)
+    return () => window.clearInterval(timer)
+  }, [])
+
+  useEffect(() => { if (reply) setBubble(null) }, [reply?.id])
 
   useLayoutEffect(() => {
     const anchor = anchorRef.current
@@ -80,7 +90,7 @@ export default function SpeechBubble(): JSX.Element | null {
       const delay = 15000 + Math.random() * 30000
       showTimer = window.setTimeout(() => {
         if (cancelled) return
-        if (useInteractionStore.getState().message) { schedule(); return }
+        if (useInteractionStore.getState().message || useReplyBubbleStore.getState().message) { schedule(); return }
         setBubble({
           text: PHRASES[Math.floor(Math.random() * PHRASES.length)],
           shape: SHAPES[Math.floor(Math.random() * SHAPES.length)],
@@ -106,19 +116,21 @@ export default function SpeechBubble(): JSX.Element | null {
   return (
     <div className="speech-anchor" ref={anchorRef}>
       <div
-        key={interaction?.id ?? visible.text}
+        key={reply?.id ?? interaction?.id ?? visible.text}
         className={`speech-bubble ${shapeClass}`}
         role="status"
         aria-live="polite"
-        data-interaction-region={interaction?.region}
+        data-interaction-region={reply ? undefined : interaction?.region}
+        data-chat-reply={reply?.id}
         style={{ '--bubble-color': visible.color } as CSSProperties}
       >
-        {interaction?.region && (
+        {!reply && interaction?.region && (
           <span className="interaction-caption">
             {INTERACTIONS[interaction.region].label} · {interaction.actionLabel ?? INTERACTIONS[interaction.region].actionLabel}
           </span>
         )}
         {visible.text}
+        {reply && reply.pages.length > 1 && <span className="reply-page">{reply.page + 1} / {reply.pages.length}</span>}
       </div>
     </div>
   )

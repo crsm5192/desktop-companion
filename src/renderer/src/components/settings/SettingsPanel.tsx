@@ -11,6 +11,10 @@ export default function SettingsPanel(): JSX.Element {
   const [models, setModels] = useState<ModelInfo[]>([])
   const [notebooks, setNotebooks] = useState<SiyuanNotebook[]>([])
   const [folderMsg, setFolderMsg] = useState('')
+  const [apiStatus, setApiStatus] = useState('')
+  const [saveError, setSaveError] = useState('')
+  const [chatPrompt, setChatPrompt] = useState<string | null>(null)
+  const [agentPrompt, setAgentPrompt] = useState<string | null>(null)
 
   useEffect(() => {
     // 配置 + 模型列表一起加载，避免下拉框在列表未到时先渲染、值对不上（导致记不住选中项）
@@ -55,11 +59,14 @@ export default function SettingsPanel(): JSX.Element {
   const patch = (p: Partial<AppConfig>): void => setCfg({ ...cfg, ...p })
 
   const save = async (): Promise<void> => {
-    // 工具栏可在面板打开期间切换互动，保存设置时保留最新开关状态。
-    await window.api.setConfig({
+    setSaveError('')
+    try {
+    // 工具栏或托盘可在面板打开期间切换开关，保存设置时保留最新状态。
+    const updated = await window.api.setConfig({
       ...cfg,
-      pet: { ...cfg.pet, interactionEnabled: usePetStore.getState().interactionEnabled }
+      pet: { ...cfg.pet, interactionEnabled: usePetStore.getState().interactionEnabled, edgeSnapEnabled: usePetStore.getState().edgeSnapEnabled }
     })
+    setCfg(updated)
     // 即时生效：写共享 store，PetStage/App 订阅后立即重载/刷新
     usePetStore.getState().setModel(cfg.pet.modelPath, cfg.pet.scale)
     usePetStore.getState().setLocked(cfg.pet.locked)
@@ -69,6 +76,11 @@ export default function SettingsPanel(): JSX.Element {
     refreshCharacter()
     setSaved(true)
     setTimeout(() => setSaved(false), 1500)
+    const status = await window.api.control.status()
+    setApiStatus(status.error ? `连接接口未开启：${status.error}` : status.listening ? `桌宠监听 ${status.host}:${status.port}；Agent 连接 ${status.endpoint}` : '接口已关闭')
+    if (chatPrompt !== null) setChatPrompt(await window.api.chat.prompt())
+    if (agentPrompt !== null) setAgentPrompt(await window.api.chat.prompt('agent'))
+    } catch (err) { setSaveError(err instanceof Error ? err.message : String(err)) }
   }
 
   const testSiyuan = async (): Promise<void> => {
@@ -557,6 +569,50 @@ export default function SettingsPanel(): JSX.Element {
         </label>
       </fieldset>
 
+      <fieldset>
+        <legend>AI 表演与外部控制</legend>
+        <label className="row"><input type="checkbox" checked={cfg.chat.performanceEnabled} onChange={e => patch({ chat: { ...cfg.chat, performanceEnabled: e.target.checked } })} />聊天时配合表情和动作</label>
+        <label className="row"><input type="checkbox" checked={cfg.controlApi.enabled} onChange={e => patch({ controlApi: { ...cfg.controlApi, enabled: e.target.checked } })} />启用外部程序与 Agent 控制</label>
+        <label className="row"><span>连接范围</span><select aria-label="连接范围" value={cfg.controlApi.listenHost ?? '127.0.0.1'} onChange={e => patch({ controlApi: { ...cfg.controlApi, listenHost: e.target.value } })}>
+          <option value="127.0.0.1">仅本机</option>
+          <option value="0.0.0.0">允许其他电脑连接</option>
+          <option value="::1">仅本机（IPv6）</option>
+          <option value="::">允许其他电脑连接（IPv6）</option>
+          {cfg.controlApi.listenHost === 'localhost' && <option value="localhost">仅本机（localhost）</option>}
+        </select></label>
+        <label className="row"><span>桌宠监听端口</span><input type="number" aria-label="桌宠监听端口" min={1024} max={65535} value={cfg.controlApi.port} onChange={e => {
+          const port = Number(e.target.value)
+          let endpoint = cfg.controlApi.endpoint ?? `ws://127.0.0.1:${cfg.controlApi.port}`
+          try {
+            const address = new URL(endpoint)
+            if (['127.0.0.1', 'localhost', '[::1]'].includes(address.hostname) && Number(address.port || (address.protocol === 'wss:' ? 443 : 80)) === cfg.controlApi.port && Number.isInteger(port) && port >= 1024 && port <= 65535) {
+              address.port = String(port)
+              endpoint = address.toString()
+            }
+          } catch { /* The address is validated when saving. */ }
+          patch({ controlApi: { ...cfg.controlApi, port, endpoint } })
+        }} /></label>
+        <label className="row"><span>Agent 连接地址</span><input type="text" aria-label="Agent 连接地址" placeholder="ws://电脑IP:18790 或 wss://域名/路径" value={cfg.controlApi.endpoint ?? `ws://127.0.0.1:${cfg.controlApi.port}`} onChange={e => patch({ controlApi: { ...cfg.controlApi, endpoint: e.target.value } })} /></label>
+        <p>远程 Agent 请填写它能访问的电脑 IP 或域名，地址会自动写入 AI 提示词。VPN 或隧道可转发到桌宠监听端口；wss 加密由隧道或代理提供。</p>
+        <label className="row"><span>连接令牌</span><input type="password" value={cfg.controlApi.token} onChange={e => patch({ controlApi: { ...cfg.controlApi, token: e.target.value } })} /></label>
+        <button onClick={() => void navigator.clipboard.writeText(cfg.controlApi.token)}>复制连接令牌</button>
+        <button onClick={() => void window.api.control.status().then(status => setApiStatus(status.error ? `接口未开启：${status.error}` : status.listening ? `桌宠监听 ${status.host}:${status.port}；Agent 连接 ${status.endpoint}` : '接口已关闭'))}>查看连接状态</button>
+        <button onClick={() => {
+          if (chatPrompt !== null) setChatPrompt(null)
+          else void window.api.chat.prompt().then(setChatPrompt)
+        }}>{chatPrompt !== null ? '收起提示词' : '预览已保存的 AI 提示词'}</button>
+        {chatPrompt !== null && <label className="col"><span>每次对话前自动发送，地址随保存的配置更新</span><textarea readOnly rows={12} aria-label="发给 AI 的系统提示词" value={chatPrompt} /></label>}
+        <button onClick={() => {
+          if (agentPrompt !== null) setAgentPrompt(null)
+          else void window.api.chat.prompt('agent').then(setAgentPrompt)
+        }}>{agentPrompt !== null ? '收起 Agent 提示词' : '预览已保存的远程 Agent 提示词'}</button>
+        {agentPrompt !== null && <>
+          <label className="col"><span>将这份说明提前放入远程 Agent 的系统提示词或工具说明；连接令牌单独配置</span><textarea readOnly rows={12} aria-label="远程 Agent 控制提示词" value={agentPrompt} /></label>
+          <button onClick={() => void navigator.clipboard.writeText(agentPrompt)}>复制 Agent 提示词</button>
+        </>}
+        {apiStatus && <div className="siyuan-status">{apiStatus}</div>}
+      </fieldset>
+      {saveError && <div className="error">{saveError}</div>}
       <button className="save-btn" onClick={() => void save()}>
         {saved ? '已保存 ✓' : '保存'}
       </button>

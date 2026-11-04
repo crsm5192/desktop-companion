@@ -11,7 +11,8 @@ const LEGACY_DIR_NAME = 'awa-subaru-companion'
  */
 function migrateLegacyData(): void {
   try {
-    if (app.isPackaged === false) return // 开发环境不折腾
+    // Explicit data directories belong to an independent profile, including packaged tests.
+    if (app.isPackaged === false || process.env.DESKTOP_COMPANION_DATA_DIR) return
     const current = app.getPath('userData')
     const legacy = join(app.getPath('appData'), LEGACY_DIR_NAME)
     if (current === legacy) return

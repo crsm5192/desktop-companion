@@ -1,4 +1,6 @@
+import { extractPerformance, type PerformanceCue } from '@shared/control'
 export interface ParsedReply {
+  performance?: PerformanceCue
   /** 页面显示的干净中文 */
   display: string
   /** 用于 TTS 的文本（日语优先） */
@@ -13,6 +15,8 @@ export interface ParsedReply {
  * - 若没有任何日语，则用中文作为语音兜底。
  */
 export function parseAssistantReply(raw: string): ParsedReply {
+  const extracted = extractPerformance(raw)
+  raw = extracted.text
   const lines = raw.split(/\r?\n/)
 
   // 找日语起点：优先「日语：」标签；否则从末尾往前找连续的含假名块
@@ -65,6 +69,7 @@ export function parseAssistantReply(raw: string): ParsedReply {
   const speak = speakLines.join('\n').replace(/\n{3,}/g, '\n\n').trim()
 
   return {
+    performance: extracted.performance,
     display: display || raw.trim(),
     speak: speak || display
   }

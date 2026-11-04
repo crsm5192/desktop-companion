@@ -5,6 +5,7 @@ import type { ModelAction, ModelActionsInfo, ModelInfo, TextureSizeInfo } from '
 import { externalModelsDir } from '../paths'
 
 export function modelsDir(): string {
+  if (process.env.DESKTOP_COMPANION_MODELS_DIR) return resolve(process.env.DESKTOP_COMPANION_MODELS_DIR)
   // 打包后：exe 旁边的 models 目录（便携）；开发：src/renderer/public/models
   return app.isPackaged
     ? externalModelsDir()

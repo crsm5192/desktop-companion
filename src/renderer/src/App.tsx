@@ -5,6 +5,8 @@ import { useMusicStore } from './store/music'
 import { useModelActionsStore } from './store/modelActions'
 import { useInteractionStore } from './store/interaction'
 import { useSpeechStore } from './store/speech'
+import { useReplyBubbleStore } from './store/replyBubble'
+import { usePetControl } from './hooks/usePetControl'
 import { CLICK_DISTANCE, petInteractionRef } from './lib/petInteraction'
 import PetStage from './components/pet/PetStage'
 import ModelActionBar from './components/pet/ModelActionBar'
@@ -16,6 +18,7 @@ import DiaryPanel from './components/diary/DiaryPanel'
 import SettingsPanel from './components/settings/SettingsPanel'
 
 export default function App(): JSX.Element {
+  usePetControl()
   const panel = useUIStore((s) => s.panel)
   const setPanel = useUIStore((s) => s.setPanel)
   const locked = usePetStore((s) => s.locked)
@@ -42,13 +45,18 @@ export default function App(): JSX.Element {
       if (speaking) speech.startSpeaking()
       else speech.stopSpeaking()
     })
-    return () => { offState(); offSpeaking(); useSpeechStore.getState().stopSpeaking() }
+    const offLevel = window.api.control.onSpeechLevel(({ speaking, level }) => {
+      if (speaking) useSpeechStore.getState().setLevel(level)
+      else useSpeechStore.getState().stopSpeaking()
+    })
+    const offPresentation = window.api.chat.onPresentation(payload => useReplyBubbleStore.getState().receive(payload))
+    return () => { offState(); offSpeaking(); offLevel(); offPresentation(); useSpeechStore.getState().stopSpeaking() }
   }, [])
 
   const toggle = (p: NonNullable<typeof panel>): void => setPanel(panel === p ? null : p)
 
-  /** 模型复位：平移归零（回窗口正中）+ 缩放回 1×，并立即持久化 */
-  const resetModel = (): void => {
+  /** 模型复位：停止互动，平移归零（回窗口正中）+ 缩放回 1×。 */
+  const applyModelReset = (): void => {
     window.clearTimeout(resetTimer.current)
     setResetFlash(true)
     resetTimer.current = window.setTimeout(() => setResetFlash(false), 700)
@@ -57,6 +65,12 @@ export default function App(): JSX.Element {
     const s = usePetStore.getState()
     s.setScale(1)
     s.setOffset(0, 0)
+  }
+
+  useEffect(() => window.api.onModelReset(applyModelReset), [])
+
+  const resetModel = (): void => {
+    applyModelReset()
     void window.api.setConfig({ pet: { scale: 1, offsetX: 0, offsetY: 0 } })
   }
 
@@ -191,7 +205,6 @@ export default function App(): JSX.Element {
         </button>
         {/* 模型表情/动作：与其它按钮同级，随时可用（不再依赖锁定模式） */}
         <ModelActionBar expressions={modelExpressions} motions={modelMotions} />
-        <button className="toolbar-button" data-flash={resetFlash} title="复位模型（回中心 + 1×）" onClick={resetModel}>复位</button>
         <button className="toolbar-button" aria-pressed={panel === 'settings'} title="设置" onClick={() => toggle('settings')}>设置</button>
       </div>
 

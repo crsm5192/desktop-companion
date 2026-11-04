@@ -32,6 +32,10 @@ export default function PetStage(): JSX.Element {
       setEyeTrackingStrength(cfg.pet.eyeTrackingStrength)
       setOpacity(cfg.pet.opacity ?? 1)
       usePetStore.getState().setInteractionEnabled(cfg.pet.interactionEnabled ?? false)
+      usePetStore.getState().setEdgeSnapEnabled(cfg.pet.edgeSnapEnabled ?? false)
+    })
+    return window.api.onConfigChanged(() => {
+      void window.api.getConfig().then(cfg => usePetStore.getState().setEdgeSnapEnabled(cfg.pet.edgeSnapEnabled ?? false))
     })
   }, [setModel, setLocked, setOffset, setEyeTracking, setEyeTrackingStrength, setOpacity])
 

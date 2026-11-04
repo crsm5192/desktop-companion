@@ -7,11 +7,21 @@ let petWindow: BrowserWindow | null = null
 let chatWindow: BrowserWindow | null = null
 let opened = false
 let docked = true
-let ready = false
 let moving = false
 
 function announce(): void {
   if (petWindow && !petWindow.isDestroyed()) petWindow.webContents.send(IPC.ChatWindowState, opened)
+}
+
+function showChatWindow(activate: boolean): void {
+  const win = chatWindow
+  if (!win || win.isDestroyed() || !petWindow?.isVisible()) return
+  // Check native visibility when opening windows created by hidden launchers.
+  for (let attempt = 0; attempt < 2; attempt++) {
+    if (activate) win.show()
+    else win.showInactive()
+    if (win.isVisible()) break
+  }
 }
 
 export function isChatOpen(): boolean { return opened }
@@ -35,7 +45,7 @@ export function bindChatWindow(pet: BrowserWindow): void {
   pet.on('move', follow)
   pet.on('resize', follow)
   pet.on('hide', () => chatWindow?.hide())
-  pet.on('show', () => { if (opened && ready) { follow(); chatWindow?.showInactive() } })
+  pet.on('show', () => { if (opened) { follow(); showChatWindow(false) } })
   pet.webContents.on('did-finish-load', announce)
   pet.on('closed', () => {
     petWindow = null
@@ -57,7 +67,6 @@ export function setChatOpen(value: boolean): boolean {
     return false
   }
   if (!chatWindow || chatWindow.isDestroyed()) {
-    ready = false
     docked = true
     const win = new BrowserWindow({
       width: 360, height: 520, minWidth: 280, minHeight: 260,
@@ -78,20 +87,16 @@ export function setChatOpen(value: boolean): boolean {
     win.on('close', (event) => { event.preventDefault(); setChatOpen(false) })
     win.on('closed', () => {
       chatWindow = null
-      ready = false
       opened = false
       if (petWindow && !petWindow.isDestroyed()) petWindow.webContents.send(IPC.PetSpeaking, false)
       announce()
-    })
-    win.once('ready-to-show', () => {
-      ready = true
-      if (opened && petWindow?.isVisible()) { dockChatWindow(); win.show() }
     })
     win.webContents.setWindowOpenHandler(({ url }) => { void shell.openExternal(url); return { action: 'deny' } })
     void win.loadURL(`${process.env['ELECTRON_RENDERER_URL'] || 'app://bundle/index.html'}#chat`)
   }
   if (docked) dockChatWindow()
-  if (ready && petWindow?.isVisible()) chatWindow.show()
+  // Show the window shell on the first click while its renderer loads.
+  showChatWindow(true)
   announce()
   return opened
 }

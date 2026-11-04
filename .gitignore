@@ -1,5 +1,8 @@
 node_modules
 .npm-cache
+.control-test-data/
+.control-demo-data/
+test-artifacts/
 out
 dist
 release
@@ -16,6 +19,8 @@ src/renderer/public/models/
 src/renderer/public/music/
 
 # 本地生成的数据库 / 配置（含个人密钥，勿提交）
+config.json
+github-token.txt
 *.db
 *.db-journal
 

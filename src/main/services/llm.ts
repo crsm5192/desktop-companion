@@ -1,4 +1,5 @@
 import type { ChatMessage, LlmConfig } from '../../shared/types'
+import { toLlmMessages } from '../../shared/chatContent'
 
 /**
  * OpenAI 兼容的流式对话客户端（通用，不绑定任何特定服务商）。
@@ -26,12 +27,15 @@ export async function streamChat(
       'Content-Type': 'application/json',
       ...(cfg.apiKey ? { Authorization: `Bearer ${cfg.apiKey}` } : {})
     },
-    body: JSON.stringify({ model: cfg.model, messages, stream: true }),
+    body: JSON.stringify({ model: cfg.model, messages: toLlmMessages(messages), stream: true }),
     signal
   })
 
   if (!res.ok) {
     const text = await res.text().catch(() => '')
+    if (messages.some(message => message.images?.length) && [400, 415, 422].includes(res.status)) {
+      throw new Error(`图片对话请求失败，请确认当前模型支持图片输入。HTTP ${res.status}: ${text.slice(0, 250)}`)
+    }
     throw new Error(`对话接口请求失败 HTTP ${res.status}: ${text.slice(0, 300)}`)
   }
   if (!res.body) throw new Error('对话接口未返回流式响应')

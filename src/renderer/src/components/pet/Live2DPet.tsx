@@ -5,6 +5,7 @@ import { useSpeechStore } from '../../store/speech'
 import { usePetStore } from '../../store/pet'
 import { prepareTextures } from '../../lib/textureDownscale'
 import { attachPetInteraction } from '../../lib/live2dInteraction'
+import { createLive2DController, live2dControllerRef, type Live2DController } from '../../lib/live2dControl'
 import type { ModelAction, ModelActionsInfo } from '@shared/types'
 
 interface Props {
@@ -105,6 +106,7 @@ export default function Live2DPet({ modelPath, opacity, actions }: Props): JSX.E
     let cleanupListeners: (() => void) | null = null
     let onResize: (() => void) | null = null
     let interaction: ReturnType<typeof attachPetInteraction> | null = null
+    let controller: Live2DController | null = null
     usePetStore.getState().setModelReady(false)
     /** 降采样贴图产生的 blob URL 释放函数 */
     let revokeTextures: (() => void) | null = null
@@ -205,6 +207,16 @@ export default function Live2DPet({ modelPath, opacity, actions }: Props): JSX.E
         await withTimeout(sprite.ready, 60000, '模型加载超时（60 秒未完成）')
         if (cancelled) return
         interaction = attachPetInteraction(sprite, canvas, modelInfo)
+        controller = createLive2DController(sprite, modelPath, modelInfo, {
+          cancelInteraction: () => interaction?.cancel(),
+          getExpression: () => interaction?.getManualExpression(),
+          setExpression: name => {
+            interaction?.resetExpressions()
+            if (name) { interaction?.setManualExpression(name); sprite.setExpression({ expressionId: name }) }
+          }
+        })
+        live2dControllerRef.current = controller
+        window.api.control.ready(controller.capabilities())
 
         setStatus('适配尺寸…')
         // 基础尺寸：高度适配、脚踩窗口底、水平居中；缩放(滑条)在此基础上乘倍数
@@ -274,6 +286,15 @@ export default function Live2DPet({ modelPath, opacity, actions }: Props): JSX.E
           sprite.setParameterValueById('ParamEyeBallY', -curNY * 1.5 * eyeTrackingStrength * (1 - gazeWeight) + (pose?.gazeY ?? 0) * gazeWeight)
           const speech = useSpeechStore.getState()
           sprite.setParameterValueById('ParamMouthOpenY', speech.speaking ? speech.mouthLevel : (pose?.mouthOpen ?? 0))
+          controller?.apply({
+            ParamAngleX: curNX * 15 * eyeTrackingStrength * gazeX + (pose?.angleX ?? 0),
+            ParamAngleY: -curNY * 12 * eyeTrackingStrength * gazeY + (pose?.angleY ?? 0),
+            ParamAngleZ: pose?.angleZ ?? 0,
+            ParamEyeBallX: curNX * 1.5 * eyeTrackingStrength * (1 - gazeWeight) + (pose?.gazeX ?? 0) * gazeWeight,
+            ParamEyeBallY: -curNY * 1.5 * eyeTrackingStrength * (1 - gazeWeight) + (pose?.gazeY ?? 0) * gazeWeight,
+            ParamMouthOpenY: speech.speaking ? speech.mouthLevel : (pose?.mouthOpen ?? 0),
+            __speaking: speech.speaking ? 1 : 0
+          })
           // 隐藏免费模型水印/广告：Paramheadxy* 参数 30=隐藏、0=显示，每帧强制覆盖（无此参数的模型是空操作）
           for (const name of ['Paramheadxy', 'Paramheadxy2', 'Paramheadxy3', 'Paramheadxy4', 'Paramheadxy5', 'Paramheadxy6', 'Paramheadxy7', 'Paramheadxy8', 'Paramheadxy9']) {
             sprite.setParameterValueById(name, 30)
@@ -296,6 +317,7 @@ export default function Live2DPet({ modelPath, opacity, actions }: Props): JSX.E
 
         // 暴露动作执行器：UI 按钮点一下 → 播对应表情/动作
         live2dActionRef.current = (a: ModelAction): void => {
+          controller?.reset()
           interaction?.cancel()
           try {
             if (a.kind === 'expression') {
@@ -408,6 +430,9 @@ export default function Live2DPet({ modelPath, opacity, actions }: Props): JSX.E
       interaction?.destroy()
       usePetStore.getState().setModelReady(false)
       live2dActionRef.current = null
+      if (live2dControllerRef.current === controller) live2dControllerRef.current = null
+      window.api.control.ready(null)
+      controller?.destroy()
       cleanupListeners?.()
       revokeTextures?.()
       if (app) {

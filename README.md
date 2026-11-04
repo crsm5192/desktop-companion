@@ -9,9 +9,9 @@
 ## 功能
 
 - 🐱 **Live2D 桌宠**：透明置顶窗 + 点击穿透 + 锁定模式，支持拖拽移动 / 右键平移 / 框架整体缩放 / 不透明度调节、眼球追踪、随机气泡、口型联动、**一键复位**。
-- 🎭 **模型按键自动化**：自动扫描模型目录，把没在 `model3.json` 里声明的表情/动作补全成底部小按钮——不同模型（VTS 导出、Cubism 原生）通吃，换模型不用改配置。
+- 🎭 **模型表情与动作自动发现**：自动扫描模型目录，补全未在 `model3.json` 中声明的表情/动作，统一在“表情”抽屉浏览和搜索；支持 VTS 导出与 Cubism 原生模型，换模型不用改配置。
 - 🧹 **水印清理**：内置常见免费模型的水印/广告参数压制（如 `Paramheadxy*`），部分模型可写进 `.moc3` 默认值，换机也不丢。
-- 💬 **对话（通用 OpenAI 兼容）**：任何实现标准 `/v1/chat/completions` 接口的服务都能直接用 —— OpenAI、DeepSeek、智谱、Moonshot、本地 vLLM / LM Studio / Ollama 等；支持流式 SSE 输出。已用真实服务端实测通过（见下文「对话接口兼容性」）。
+- 💬 **图片与文字对话**：独立聊天侧窗，支持流式回复、选择/粘贴/拖入图片，AI 回复同时显示在聊天记录和桌宠气泡中。任何实现标准 `/v1/chat/completions` 接口的服务都能使用；看图需选择支持图片输入的模型。
 - 🎙️ **语音**：TTS（常驻 HTTP 服务 / 外部脚本 两种模式，任何音色都可）。配套语音后端见
   **[companion-voice-server](https://github.com/crsm5192/companion-voice-server)**。
 - 🎵 **音乐播放器**：顺序/乱序、进度条、读取音频元数据（标题/艺术家）、列表滚动、关面板继续播、记住上次播放。
@@ -20,6 +20,29 @@
 - 💾 **存储**：SQLite（sql.js WASM，聊天/待办/日记）。
 - 📦 **双版本打包**：便携版（免安装）+ NSIS 安装版（启动快）；模型 / 音乐 / 配置 / 数据都在 exe 外部。
 - 🩺 **诊断日志**：启动时在数据目录写 `diagnostic.log`，排查模型/音乐路径、WebGL 等问题。
+- 🖥️ **托盘与窗口操作**：托盘右键“复位”恢复模型居中和 1× 缩放；“吸附”前的对号表示开关已开启；“框架回到屏幕下方正中”将底部按钮对齐任务栏上缘。
+- 🎬 **AI 表演与控制**：表情动作跟随实际语音开始播放，支持连续动作曲线和外部 WebSocket Agent 控制。
+
+## v0.5.0 更新（2026-11-04）
+
+- 增加图片发送、图片预览和聊天图片记录；每条消息最多 4 张。
+- AI 回复显示在聊天记录与桌宠气泡中，长回复在气泡里分段显示。
+- 开启语音时先准备音频，再同步开始文字、气泡、口型和表情动作；语音失败仍显示文字。
+- 增加情绪动作变化，针对 DeepSeek 模型限制肩、手臂、肘部与手腕的运动幅度，减少异常扭曲。
+- 修复第一次点击对话不显示窗口的问题，关闭后再次点击可直接打开并保留草稿。
+- 将“复位”“吸附”移至托盘菜单；吸附开关使用对号显示并保存状态，靠近四边或角落自动贴边，拖离可释放。
+- 增加框架回到屏幕下方正中的托盘操作，底部按钮对齐任务栏上缘；改善不同框架大小下的按钮可操作性。
+- 增加桌宠控制 API、远程 Agent 提示词及配套示例与回归测试。
+
+## AI 表演与控制 API
+
+聊天支持选择、粘贴和拖入图片，每条最多 4 张，支持 JPG/PNG/WebP/GIF；发送前自动缩小图片，聊天记录会保存图片。看图需要在设置中选择支持图片输入的模型。
+
+开启「语音」时，先准备音频，再同时显示对话回复、桌宠气泡并开始表情动作；关闭语音时保留流式文字回复。长回复在气泡中分段显示，语音合成失败也会显示完整文字。表演使用更明显的头部、身体、肩膀和手臂联动，不同情绪会轮换动作，幅度按模型实际范围限制。DeepSeek 模型额外限制肩、手臂、肘部和手腕的驱动幅度，同时保留完整抬手与挥手动作。
+
+可通过本机 WebSocket `ws://127.0.0.1:18790` 控制表情、动作、眼神与 Live2D 参数。内置聊天支持隐藏情绪指令，语音播放使用实际音量驱动口型。接口开关、监听范围、端口、Agent 连接地址和连接令牌在设置中管理；可生成并复制远程 Agent 的调用提示词，令牌单独交给连接器。
+
+调用协议、演示与测试方法见 [桌宠控制 API](docs/桌宠控制API.md)。
 
 ## 点击互动
 
@@ -28,13 +51,15 @@
 头部会点头蹭蹭、歪头张望或开心晃脑；脸部会害羞回眸、歪头眨眼或躲开又探头；手部会抬手连挥、伸手击掌或招手邀约；身体会转身回望、舒展伸腰或左右摇摆；脚部会缩脚找平衡、轻蹦两下或探脚再收回。
 动作持续约 6.8 秒，包含起势、主要回应、后续小动作和平缓回位；连续点击会从当前姿势平滑衔接。保留接近 95%–97% 可动范围的主要峰值，并按模型实际上下限约束。肩、手臂、手腕、髋腿错峰联动，搭配短促眨眼、单眼眨眼、视线转移和微笑张口；头发和衣物使用模型自身物理跟随。动作结束后恢复光标追踪，语音播放时口型优先跟随语音。
 台词气泡吸附模型头顶右上方，平移、缩放和动作时同步移动；靠近窗口边缘时自动避让。互动台词显示约 8 秒。台词完全离线，不调用对话接口或语音服务。
-底部主按钮统一大小和样式；紫色表示对应面板或互动已开启，复位按钮执行后短暂亮起。支持关节控制的模型使用连续动作曲线；其他模型按可用参数和原有动作适配，结束后恢复。
+底部主按钮统一大小和样式；紫色表示对应面板或互动已开启。“复位”和“吸附”放在系统托盘右键菜单，主按钮区不再显示。支持关节控制的模型使用连续动作曲线；其他模型按可用参数和原有动作适配，结束后恢复。
 
 **表情** 按钮展开宽版抽屉，表情和动作分开浏览，支持按名称搜索。每项完整显示名称，长名称自动换行，列表独立滚动；点击后短暂高亮并显示“已触发”。点击外部、关闭按钮或按 Esc 收起。
 
 **对话** 按钮打开独立聊天侧窗，优先贴靠模型窗口右边，空间不足时换到左边或上下方。可拖动标题调整位置，点击“贴靠”恢复跟随；收起窗口保留草稿和正在生成的回复。聊天记录独立滚动，输入框固定在底部；翻阅历史时不强制跳到最新，支持 Enter 发送、Shift + Enter 换行。托盘悬浮提示固定为“桌面宠物”。
 
 透明背景不会触发互动。锁定调整模式下，左键拖动仍移动窗口，右键拖动平移模型；拖动不会触发台词。
+
+托盘右键菜单的“复位”会停止当前互动，将模型移回框架中心并恢复 1× 缩放。“框架回到屏幕下方正中”会将框架横向居中，底部按钮与任务栏上缘对齐；平时可自由摆放。“吸附”默认关闭，菜单项前有对号表示已开启，再次点击可关闭。开启后在调整模式下拖动框架，靠近屏幕上下左右边缘或角落会自动贴边，往外拖可解除吸附。开关状态会保存，关闭后靠近边缘也可自由摆放。
 关闭互动后恢复普通操作。部位优先按模型的 HitAreas / DisplayInfo 识别；没有相关信息的模型按模型内的相对位置估计。
 
 ## 对话接口兼容性
@@ -87,7 +112,7 @@ npm run dev
 2. **选模型**：⚙️ → 小人 → 选择模型；
 3. **改设定**：⚙️ → 角色设定，填角色名、自称、对你的称呼；再按需改「对话 / 语音规则」里的人设。
 
-改完点保存即时生效，无需重启。模型自带的**表情/动作**会自动出现在底部一排小按钮上（详见下节）。
+改完点保存即时生效，无需重启。模型自带的**表情/动作**会自动出现在主按钮栏“表情”的抽屉里（详见下节）。
 
 > 模型无需事先在 `model3.json` 里声明 Expressions/Motions —— 程序会扫描目录自动补全。
 
@@ -95,13 +120,15 @@ npm run dev
 
 首次运行后生成 `config.json`（位置见下文「数据存放位置」），也可在设置面板（⚙️）里改。关键项：
 
-- `character`：角色设定 —— `name`（角色名，显示在聊天标题/托盘）、`shortName`（聊天气泡落款）、`userName`（对你的称呼）。**换角色就改这里**。
+- `character`：角色设定 —— `name`（角色名，显示在聊天标题）、`shortName`（聊天气泡落款）、`userName`（对你的称呼）。**换角色就改这里**。托盘悬浮提示固定为“桌面宠物”。
 - `llm`：`baseUrl` / `apiKey` / `model`（任意 OpenAI 兼容对话接口；旧版配置里的 `hermes` 段会自动迁移过来）。
 - `tts`：`mode`（`server` 常驻服务 / `command` CLI）、`server.baseUrl`、`speed`。
 - `siyuan`：`baseUrl` / `token`（思源「设置 → 关于 → API token」）；`syncDiary` / `diaryNotebook`（日记同步开关与目标笔记本）、`syncTodo` / `todoNotebook`（待办同步）。日记同步为同路径幂等更新（`/日记/日期`），待办整表覆盖为一篇 Markdown 任务清单。
-- `pet`：`modelPath`、`scale`、`opacity`、`frameScale`、`eyeTracking`、锁定等。
+- `pet`：`modelPath`、`scale`、`opacity`、`frameScale`、`eyeTracking`、`edgeSnapEnabled`（吸附边缘）、锁定等。
 - `chat.persona`：对话规则（人设 / 系统提示词）。
 - `chat.voiceRule`：语音规则（如何输出「日语：」行）。
+- `chat.performanceEnabled`：内置聊天的表情动作开关。
+- `controlApi`：外部控制接口，配置 `enabled` / `listenHost` / `port` / `endpoint` / `token`；详见 [桌宠控制 API](docs/桌宠控制API.md)。
 
 ## 模型按键（表情 / 动作）
 
@@ -113,8 +140,8 @@ npm run dev
 | 目录里有 `exp3.json` / `motion3.json` 但**没声明**（VTS 导出常见） | 自动扫描补全声明（只改内存，不动模型文件） |
 | 模型完全没有表情/动作 | 不显示按钮条 |
 
-- 表情显示为一排圆角小按钮；动作收进 `▾` 下拉，避免堆满屏幕；
-- 按钮数量随模型自动变化，切换模型即刻刷新。
+- 主按钮栏的“表情”打开抽屉，表情和动作分别浏览，支持搜索及完整名称显示；
+- 可用项随模型自动变化，切换模型即刻刷新，点击后显示触发反馈。
 
 ## 水印 / 广告清理
 
@@ -127,7 +154,7 @@ npm run dev
 
 | 版本 | 位置 |
 |---|---|
-| **开发** | 模型/音乐在 `src/renderer/public/{models,music}/`；配置/数据在 `%APPDATA%\DesktopCompanion\` |
+| **开发** | 模型/音乐在 `src/renderer/public/{models,music}/`；配置/数据在 `%APPDATA%\desktop-companion\` |
 | **便携版 exe** | 全部在 **exe 旁边**（`models\` `music\` `config.json` `data.db`），随 exe 携带 |
 | **安装版（NSIS）** | 全部在 `%APPDATA%\DesktopCompanion\`（`config.json` `data.db` `models\` `music\`），**覆盖安装/卸载不会被清空** |
 
@@ -151,7 +178,24 @@ npm run build:win:nsis       # NSIS 安装版（启动快）
 npm run build:win            # 两者都出
 ```
 
-产物在 `release/`：`DesktopCompanion 0.4.0.exe`（便携）+ `DesktopCompanion Setup 0.4.0.exe`（安装）+ `models\` + `music\`。
+v0.5.0 产物在 `release/`：`DesktopCompanion.0.5.0.exe`（便携）和 `DesktopCompanion.Setup.0.5.0.exe`（安装）。两者均为 Windows x64，模型与音乐不嵌入 exe。单独打包命令会将本机已有的模型/音乐目录复制到 `release/`，发布时只上传 exe。
+
+发布构建可使用 `npm run build:win -- --publish never`，同时生成两种 exe，再上传 GitHub Release。
+
+## 开发验证
+
+```bash
+npm run typecheck
+npm run test:interaction
+npm run test:control
+npm run test:chat
+npm run test:chat-window
+npm run test:window-placement
+```
+
+已有构建后可运行 `npm run test:control:live -- --models-dir "你的模型目录"`，使用独立数据目录、本机测试对话与语音服务，验证真实 Live2D 动作、图片聊天、语音同步、窗口操作及吸附。默认测试模型为 `DeepSeek/大肥鱼.model3.json`。
+
+验证打包后的程序时加 `--executable "release/win-unpacked/DesktopCompanion.exe"`；验证便携版时指定便携 exe 并加 `--portable`，测试会复制到独立目录运行。加 `--chat-window-only` 可只检查窗口、按钮、复位和吸附。
 
 打包注意事项：
 - 若 electron 下载超时，用 `ELECTRON_MIRROR` 镜像（见「快速开始」）；
@@ -183,8 +227,8 @@ npm run build:win            # 两者都出
 
 | 版本 | 说明 |
 |---|---|
-| **[便携版](https://github.com/crsm5192/desktop-companion/releases/latest/download/DesktopCompanion.0.4.0.exe)** | 免安装，解压即用；模型/音乐/配置/数据都在 exe 旁边，可整个文件夹带走 |
-| **[安装版](https://github.com/crsm5192/desktop-companion/releases/latest/download/DesktopCompanion.Setup.0.4.0.exe)** | NSIS 安装包，启动更快；数据存在 `%APPDATA%\DesktopCompanion\`，覆盖安装不清空 |
+| **[便携版 v0.5.0](https://github.com/crsm5192/desktop-companion/releases/download/v0.5.0/DesktopCompanion.0.5.0.exe)** | Windows x64，免安装，下载后直接运行；模型/音乐/配置/数据都在 exe 旁边，可整个文件夹带走 |
+| **[安装版 v0.5.0](https://github.com/crsm5192/desktop-companion/releases/download/v0.5.0/DesktopCompanion.Setup.0.5.0.exe)** | Windows x64，NSIS 安装包；数据存在 `%APPDATA%\DesktopCompanion\`，覆盖安装不清空 |
 
 > 全部版本见 **[Releases](https://github.com/crsm5192/desktop-companion/releases)**。
 > 模型与音乐因版权不随包分发，需自行放入数据目录（见上文「数据存放位置」）。

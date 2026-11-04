@@ -32,13 +32,14 @@ body,
 .toolbar {
   position: absolute;
   right: 8px;
-  bottom: 8px;
+  bottom: 0;
   display: flex;
   gap: 4px;
   max-width: calc(100% - 16px);
   flex-wrap: wrap;
   justify-content: flex-end;
   -webkit-app-region: no-drag;
+  z-index: 45;
 }
 
 /* 锚点跟随头顶；内层单独负责出现动画，不影响定位。 */
@@ -73,6 +74,8 @@ body,
   font-weight: 500;
   letter-spacing: 0.5px;
 }
+.speech-bubble { overflow-wrap: anywhere; white-space: pre-wrap; }
+.reply-page { display: block; margin-top: 4px; font-size: 10px; font-weight: 400; opacity: 0.6; }
 /* 尾巴 */
 .speech-bubble::after {
   content: '';
@@ -662,6 +665,14 @@ body,
   line-height: 1.5;
 }
 .chat-input-hint { flex-shrink: 0; color: #887692; font-size: 11px; }
+.chat-input .chat-file-input { display: none; }
+.chat-input .chat-image-button { align-self: stretch; padding: 6px 9px; background: #e9dff1; color: #685278; }
+.chat-attachments { display: flex; flex-shrink: 0; gap: 8px; overflow-x: auto; padding: 4px; }
+.chat-attachment { position: relative; flex-shrink: 0; }
+.chat-attachment img { display: block; width: 68px; height: 68px; object-fit: cover; border: 1px solid #d8c6e6; border-radius: 8px; }
+.chat-attachment button { position: absolute; right: -4px; top: -4px; width: 22px; height: 22px; border: none; border-radius: 50%; background: #685278; color: white; cursor: pointer; }
+.bubble-images { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+.bubble-images img { display: block; width: 160px; max-width: 100%; max-height: 180px; object-fit: contain; border-radius: 8px; background: white; }
 .chat-window button:focus-visible, .chat-input textarea:focus-visible { outline: 2px solid #76519b; outline-offset: 1px; }
 
 .bubble {

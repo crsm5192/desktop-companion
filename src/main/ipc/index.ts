@@ -1,10 +1,14 @@
-import { BrowserWindow, Notification, ipcMain, screen } from 'electron'
+import { Notification, ipcMain, screen } from 'electron'
 import { IPC } from '../../shared/constants'
-import type { AppConfig, ChatMessage, DeepPartial, DiaryEntry, SiyuanConfig, TodoItem, TtsConfig } from '../../shared/types'
+import type { AppConfig, ChatMessage, ChatPresentation, DeepPartial, DiaryEntry, SiyuanConfig, TodoItem, TtsConfig } from '../../shared/types'
 import { getConfig, setConfig } from '../config'
-import { getMainWindow, clampWindowPosition, setWindowPosition, applyFrameScale } from '../window'
+import { getMainWindow, clampWindowPosition, setWindowPosition } from '../window'
+import { applyPetWindowSettings, broadcastConfigChanged } from '../petSettings'
+import { refreshTrayMenu } from '../tray'
 import { dockChatWindow, getChatWindow, isChatOpen, setChatOpen } from '../chatWindow'
 import { streamChat } from '../services/llm'
+import { configureControlApi, getModelCapabilities } from '../services/control'
+import { buildChatSystemPrompt, prepareChatMessages } from '../services/chatPrompt'
 import { probeServer, synthesize } from '../services/tts'
 import { listNotebooks, syncDiary, syncTodoList, testConnection as siyuanTest } from '../services/siyuan'
 import { discoverModelActions, getModelTextureSizes, listModels, modelsDir } from '../services/models'
@@ -16,16 +20,14 @@ import { dbAddChat, dbAddTodo, dbClearChat, dbDeleteDiary, dbDeleteTodo, dbListC
 export function registerIpc(): void {
   // ---------- 配置 ----------
   ipcMain.handle(IPC.ConfigGet, () => getConfig())
-  ipcMain.handle(IPC.ConfigSet, (_e, patch: DeepPartial<AppConfig>) => {
-    const next = setConfig(patch)
-    // 框架缩放：实时改窗口尺寸（模型随框架自动适配）
-    if (typeof patch.pet?.frameScale === 'number') {
-      const win = getMainWindow()
-      if (win) applyFrameScale(win, patch.pet.frameScale)
-    }
-    // Signal only; each window fetches the config itself without broadcasting credentials.
-    for (const win of BrowserWindow.getAllWindows()) win.webContents.send(IPC.ConfigChanged)
-    return next
+  ipcMain.handle(IPC.ChatPromptGet, (_event, target?: unknown) => buildChatSystemPrompt(getConfig(), getModelCapabilities(), target === 'agent' ? 'agent' : 'chat'))
+  ipcMain.handle(IPC.ConfigSet, async (_e, patch: DeepPartial<AppConfig>) => {
+    setConfig(patch)
+    if (patch.controlApi) await configureControlApi()
+    applyPetWindowSettings(patch.pet)
+    refreshTrayMenu()
+    broadcastConfigChanged()
+    return getConfig()
   })
 
   // ---------- 模型列表 ----------
@@ -74,13 +76,28 @@ export function registerIpc(): void {
   ipcMain.handle(IPC.ChatWindowSetOpen, (_event, open: boolean) => setChatOpen(open === true))
   ipcMain.handle(IPC.ChatWindowGetOpen, () => isChatOpen())
   ipcMain.handle(IPC.ChatWindowDock, () => dockChatWindow())
+  ipcMain.on(IPC.ChatPresentation, (event, payload: ChatPresentation) => {
+    if (event.sender !== getChatWindow()?.webContents || !payload) return
+    if (!['start', 'progress', 'end', 'clear'].includes(payload.type)) return
+    if (payload.type !== 'clear' && (typeof payload.id !== 'string' || payload.id.length > 128)) return
+    if (payload.type === 'start' && (typeof payload.text !== 'string' || payload.text.length > 100000 || typeof payload.speaking !== 'boolean' || !Number.isFinite(payload.durationMs))) return
+    if (payload.type === 'progress' && (!Number.isFinite(payload.progress) || payload.progress < 0 || payload.progress > 1)) return
+    getMainWindow()?.webContents.send(IPC.ChatPresentation, payload)
+  })
   ipcMain.on(IPC.PetSpeaking, (event, speaking: boolean) => {
     if (event.sender === getChatWindow()?.webContents) getMainWindow()?.webContents.send(IPC.PetSpeaking, speaking === true)
+  })
+  ipcMain.on(IPC.SpeechLevel, (event, payload: { speaking: boolean; level: number }) => {
+    if (event.sender !== getChatWindow()?.webContents) return
+    if (!payload || typeof payload.speaking !== 'boolean' || !Number.isFinite(payload.level)) return
+    getMainWindow()?.webContents.send(IPC.SpeechLevel, { speaking: payload.speaking, level: Math.max(0, Math.min(1, payload.level)) })
   })
   ipcMain.on(IPC.ChatStream, async (event, messages: ChatMessage[]) => {
     const wc = event.sender
     try {
-      await streamChat(getConfig().llm, messages, (delta) => {
+      const config = getConfig()
+      const prepared = prepareChatMessages(messages, config, getModelCapabilities())
+      await streamChat(config.llm, prepared, (delta) => {
         if (!wc.isDestroyed()) wc.send(IPC.ChatChunk, delta)
       })
       if (!wc.isDestroyed()) wc.send(IPC.ChatDone)
