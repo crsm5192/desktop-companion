@@ -9,7 +9,7 @@
 ## 功能
 
 - 🐱 **Live2D 桌宠**：透明置顶窗 + 点击穿透 + 锁定模式，支持拖拽移动 / 右键平移 / 框架整体缩放 / 不透明度调节、眼球追踪、随机气泡、口型联动、**一键复位**。
-- 🎭 **模型表情与动作自动发现**：自动扫描模型目录，补全未在 `model3.json` 中声明的表情/动作，统一在“表情”抽屉浏览和搜索；支持 VTS 导出与 Cubism 原生模型，换模型不用改配置。
+- 🎭 **模型表情与动作自动发现**：自动扫描模型目录，补全未在 `model3.json` 中声明的表情/动作，统一在独立“表情”窗口浏览和搜索；支持 VTS 导出与 Cubism 原生模型，换模型不用改配置。
 - 🧹 **水印清理**：内置常见免费模型的水印/广告参数压制（如 `Paramheadxy*`），部分模型可写进 `.moc3` 默认值，换机也不丢。
 - 💬 **图片与文字对话**：独立聊天侧窗，支持流式回复、选择/粘贴/拖入图片，AI 回复同时显示在聊天记录和桌宠气泡中。任何实现标准 `/v1/chat/completions` 接口的服务都能使用；看图需选择支持图片输入的模型。
 - 🎙️ **语音**：TTS（常驻 HTTP 服务 / 外部脚本 两种模式，任何音色都可）。配套语音后端见
@@ -22,6 +22,15 @@
 - 🩺 **诊断日志**：启动时在数据目录写 `diagnostic.log`，排查模型/音乐路径、WebGL 等问题。
 - 🖥️ **托盘与窗口操作**：托盘右键“复位”恢复模型居中和 1× 缩放；“吸附”前的对号表示开关已开启；“框架回到屏幕下方正中”将底部按钮对齐任务栏上缘。
 - 🎬 **AI 表演与控制**：表情动作跟随实际语音开始播放，支持连续动作曲线和外部 WebSocket Agent 控制。
+
+## v0.6.0 更新（2026-11-06）
+
+- 对话、音乐、番茄钟、待办、日记、表情、设置统一为独立半透明窗口，可同时打开。
+- 拖动标题栏自由调整位置，点击“贴靠”恢复跟随桌宠；收起再打开保留位置、草稿和当前内容。
+- 设置中的“桌宠不透明度”和“弹窗不透明度”分开调节、分别保存；弹窗滑条统一作用于七个窗口，新开的窗口也使用保存值。
+- 收起音乐窗口继续播放，收起番茄钟继续计时；通过托盘隐藏和恢复时，保留各窗口的开关状态。
+- 表情与动作在独立窗口里浏览、搜索和使用，保留手动选中的表情。
+- 番茄钟工具栏按钮改为“🍅钟”。
 
 ## v0.5.0 更新（2026-11-04）
 
@@ -53,7 +62,9 @@
 台词气泡吸附模型头顶右上方，平移、缩放和动作时同步移动；靠近窗口边缘时自动避让。互动台词显示约 8 秒。台词完全离线，不调用对话接口或语音服务。
 底部主按钮统一大小和样式；紫色表示对应面板或互动已开启。“复位”和“吸附”放在系统托盘右键菜单，主按钮区不再显示。支持关节控制的模型使用连续动作曲线；其他模型按可用参数和原有动作适配，结束后恢复。
 
-**表情** 按钮展开宽版抽屉，表情和动作分开浏览，支持按名称搜索。每项完整显示名称，长名称自动换行，列表独立滚动；点击后短暂高亮并显示“已触发”。点击外部、关闭按钮或按 Esc 收起。
+**对话、音乐、🍅钟、待办、日记、表情、设置** 都使用独立半透明窗口。拖动窗口顶部标题可自由移动，点击“贴靠”恢复跟随桌宠；关闭按钮、对应工具栏按钮或 Esc 收起窗口，重开保留位置和内容。设置中的“桌宠不透明度”和“弹窗不透明度”分开调节并分别保存；弹窗滑条即时作用于所有弹出窗口，新打开的窗口也使用保存的值。收起音乐窗口继续播放，收起番茄钟继续计时；托盘隐藏桌宠时一起隐藏，恢复时只显示之前打开的窗口。
+
+**表情** 按钮打开独立窗口，表情和动作分开浏览，支持按名称搜索。每项完整显示名称，长名称自动换行，列表独立滚动；点击后短暂高亮并显示“已触发”。
 
 **对话** 按钮打开独立聊天侧窗，优先贴靠模型窗口右边，空间不足时换到左边或上下方。可拖动标题调整位置，点击“贴靠”恢复跟随；收起窗口保留草稿和正在生成的回复。聊天记录独立滚动，输入框固定在底部；翻阅历史时不强制跳到最新，支持 Enter 发送、Shift + Enter 换行。托盘悬浮提示固定为“桌面宠物”。
 
@@ -124,7 +135,7 @@ npm run dev
 - `llm`：`baseUrl` / `apiKey` / `model`（任意 OpenAI 兼容对话接口；旧版配置里的 `hermes` 段会自动迁移过来）。
 - `tts`：`mode`（`server` 常驻服务 / `command` CLI）、`server.baseUrl`、`speed`。
 - `siyuan`：`baseUrl` / `token`（思源「设置 → 关于 → API token」）；`syncDiary` / `diaryNotebook`（日记同步开关与目标笔记本）、`syncTodo` / `todoNotebook`（待办同步）。日记同步为同路径幂等更新（`/日记/日期`），待办整表覆盖为一篇 Markdown 任务清单。
-- `pet`：`modelPath`、`scale`、`opacity`、`frameScale`、`eyeTracking`、`edgeSnapEnabled`（吸附边缘）、锁定等。
+- `pet`：`modelPath`、`scale`、`opacity`（桌宠不透明度）、`panelOpacity`（弹窗不透明度）、`frameScale`、`eyeTracking`、`edgeSnapEnabled`（吸附边缘）、锁定等。
 - `chat.persona`：对话规则（人设 / 系统提示词）。
 - `chat.voiceRule`：语音规则（如何输出「日语：」行）。
 - `chat.performanceEnabled`：内置聊天的表情动作开关。
@@ -178,7 +189,7 @@ npm run build:win:nsis       # NSIS 安装版（启动快）
 npm run build:win            # 两者都出
 ```
 
-v0.5.0 产物在 `release/`：`DesktopCompanion.0.5.0.exe`（便携）和 `DesktopCompanion.Setup.0.5.0.exe`（安装）。两者均为 Windows x64，模型与音乐不嵌入 exe。单独打包命令会将本机已有的模型/音乐目录复制到 `release/`，发布时只上传 exe。
+v0.6.0 产物在 `release/`：`DesktopCompanion.0.6.0.exe`（便携）和 `DesktopCompanion.Setup.0.6.0.exe`（安装）。两者均为 Windows x64，模型与音乐不嵌入 exe。单独打包命令会将本机已有的模型/音乐目录复制到 `release/`，发布时只上传 exe。
 
 发布构建可使用 `npm run build:win -- --publish never`，同时生成两种 exe，再上传 GitHub Release。
 
@@ -195,7 +206,9 @@ npm run test:window-placement
 
 已有构建后可运行 `npm run test:control:live -- --models-dir "你的模型目录"`，使用独立数据目录、本机测试对话与语音服务，验证真实 Live2D 动作、图片聊天、语音同步、窗口操作及吸附。默认测试模型为 `DeepSeek/大肥鱼.model3.json`。
 
-验证打包后的程序时加 `--executable "release/win-unpacked/DesktopCompanion.exe"`；验证便携版时指定便携 exe 并加 `--portable`，测试会复制到独立目录运行。加 `--chat-window-only` 可只检查窗口、按钮、复位和吸附。
+验证打包后的程序时加 `--executable "release/win-unpacked/DesktopCompanion.exe"`；验证便携版时指定便携 exe 并加 `--portable`，测试会复制到独立目录运行。加 `--chat-window-only` 可检查七个独立窗口、真实标题栏拖动、不透明度、草稿保留、后台播放与计时，以及按钮、复位和吸附；报告保存在 `test-artifacts/panel-windows-test-report.json`。
+
+只验证桌宠与弹窗的独立不透明度调节和保存时，加 `--opacity-only`；报告保存在 `test-artifacts/panel-opacity-test-report.json`。
 
 打包注意事项：
 - 若 electron 下载超时，用 `ELECTRON_MIRROR` 镜像（见「快速开始」）；
@@ -227,8 +240,8 @@ npm run test:window-placement
 
 | 版本 | 说明 |
 |---|---|
-| **[便携版 v0.5.0](https://github.com/crsm5192/desktop-companion/releases/download/v0.5.0/DesktopCompanion.0.5.0.exe)** | Windows x64，免安装，下载后直接运行；模型/音乐/配置/数据都在 exe 旁边，可整个文件夹带走 |
-| **[安装版 v0.5.0](https://github.com/crsm5192/desktop-companion/releases/download/v0.5.0/DesktopCompanion.Setup.0.5.0.exe)** | Windows x64，NSIS 安装包；数据存在 `%APPDATA%\DesktopCompanion\`，覆盖安装不清空 |
+| **[便携版 v0.6.0](https://github.com/crsm5192/desktop-companion/releases/download/v0.6.0/DesktopCompanion.0.6.0.exe)** | Windows x64，免安装，下载后直接运行；模型/音乐/配置/数据都在 exe 旁边，可整个文件夹带走 |
+| **[安装版 v0.6.0](https://github.com/crsm5192/desktop-companion/releases/download/v0.6.0/DesktopCompanion.Setup.0.6.0.exe)** | Windows x64，NSIS 安装包；数据存在 `%APPDATA%\DesktopCompanion\`，覆盖安装不清空 |
 
 > 全部版本见 **[Releases](https://github.com/crsm5192/desktop-companion/releases)**。
 > 模型与音乐因版权不随包分发，需自行放入数据目录（见上文「数据存放位置」）。

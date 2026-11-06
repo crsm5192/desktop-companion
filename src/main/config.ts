@@ -56,6 +56,7 @@ const DEFAULT_CONFIG: AppConfig = {
     modelPath: '', // 留空 = CSS 占位；填 public/models 下 model3.json 的相对路径启用 Live2D
     scale: 1.0,
     opacity: 1.0,
+    panelOpacity: 1.0,
     frameScale: 1.0,
     clickThrough: false,
     locked: false,
@@ -105,6 +106,13 @@ function mergeConfig(base: AppConfig, patch: DeepPartial<AppConfig>): AppConfig 
  */
 function migrateLegacyKeys(raw: Record<string, unknown>): Record<string, unknown> {
   const out = { ...raw }
+  // Preserve the appearance of windows that previously shared the pet's opacity.
+  if (out.pet && typeof out.pet === 'object' && !Array.isArray(out.pet)) {
+    const pet = out.pet as Record<string, unknown>
+    if (pet.panelOpacity === undefined && typeof pet.opacity === 'number' && Number.isFinite(pet.opacity)) {
+      out.pet = { ...pet, panelOpacity: pet.opacity }
+    }
+  }
   if (!out.llm && out.hermes) {
     out.llm = out.hermes
     delete out.hermes

@@ -119,8 +119,10 @@ export interface PetConfig {
   /** Live2D 模型的 model3.json 路径；留空则用内置占位动画 */
   modelPath: string
   scale: number
-  /** 整体不透明度 0.2~1（1 = 完全不透明） */
+  /** 桌宠不透明度 0.2~1（1 = 完全不透明） */
   opacity: number
+  /** 弹出窗口的不透明度，独立于桌宠，0.2~1 */
+  panelOpacity: number
   /** 框架缩放：整个窗口（桌宠框架）的倍率 0.5~2，模型随框架自动适配 */
   frameScale: number
   /** 点击穿透（穿透到桌面） */

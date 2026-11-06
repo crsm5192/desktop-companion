@@ -1,6 +1,6 @@
 import { app } from 'electron'
 import { existsSync, readdirSync, readFileSync } from 'node:fs'
-import { join } from 'node:path'
+import { join, resolve } from 'node:path'
 import { loadMusicMetadata } from 'music-metadata'
 import type { MusicInfo } from '../../shared/types'
 import { externalMusicDir } from '../paths'
@@ -32,6 +32,7 @@ function cleanTitle(t: string | undefined): string | undefined {
 
 /** 音乐目录：打包后再数据目录，开发时在 public/music */
 export function musicDir(): string {
+  if (process.env.DESKTOP_COMPANION_MUSIC_DIR) return resolve(process.env.DESKTOP_COMPANION_MUSIC_DIR)
   return app.isPackaged
     ? externalMusicDir()
     : join(app.getAppPath(), 'src', 'renderer', 'public', 'music')

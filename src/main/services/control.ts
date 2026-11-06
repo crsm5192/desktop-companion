@@ -5,6 +5,7 @@ import { ControlError, controlEndpoint, controlListenAddress, validateControlCom
 import { getConfig } from '../config'
 import { getMainWindow, createMainWindow } from '../window'
 import { getChatWindow } from '../chatWindow'
+import { getPanelWindow } from '../panelWindows'
 import { createControlServer } from './controlServer'
 
 let server: Awaited<ReturnType<typeof createControlServer>> | null = null
@@ -53,7 +54,9 @@ export function configureControlApi(): Promise<void> {
 export function registerControlIpc(): void {
   ipcMain.handle(IPC.ControlStatus, () => controlStatus())
   ipcMain.handle(IPC.ControlExecute, (event, command: ControlCommand) => {
-    if (event.sender !== getChatWindow()?.webContents && event.sender !== getMainWindow()?.webContents) throw new Error('无效的窗口')
+    const actionsWindow = event.sender === getPanelWindow('actions')?.webContents
+    if (actionsWindow && command?.type !== 'model.get') throw new Error('无效的表情指令')
+    if (!actionsWindow && event.sender !== getChatWindow()?.webContents && event.sender !== getMainWindow()?.webContents) throw new Error('无效的窗口')
     return dispatch(validateControlCommand(command?.type, command?.data))
   })
   ipcMain.on(IPC.ControlReply, (event, reply: ControlReply) => {
@@ -68,6 +71,7 @@ export function registerControlIpc(): void {
     if (event.sender !== getMainWindow()?.webContents) return
     model = capabilities
     if (!model) failPending()
+    getPanelWindow('actions')?.webContents.send(IPC.ConfigChanged)
     server?.emit('model.changed', { ready: !!model, modelPath: model?.modelPath ?? null })
   })
   ipcMain.on(IPC.ControlEvent, (event, payload: { type: string; data: unknown }) => {
@@ -77,7 +81,7 @@ export function registerControlIpc(): void {
 }
 export function bindControlWindow(): void {
   const window = getMainWindow() ?? createMainWindow()
-  const invalidate = (): void => { model = null; failPending(); server?.emit('model.changed', { ready: false }) }
+  const invalidate = (): void => { model = null; failPending(); getPanelWindow('actions')?.webContents.send(IPC.ConfigChanged); server?.emit('model.changed', { ready: false }) }
   window.webContents.on('did-start-loading', invalidate)
   window.webContents.on('render-process-gone', invalidate)
   window.on('closed', invalidate)

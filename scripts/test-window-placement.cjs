@@ -32,6 +32,7 @@ class Window extends EventEmitter {
   setPosition(x, y) { Object.assign(this.bounds, { x, y }); this.emit('move') }
   setBounds(bounds) { Object.assign(this.bounds, bounds); this.emit('resize'); this.emit('move') }
   setAlwaysOnTop() {}
+  setOpacity(value) { this.opacity = value }
   loadURL() { return Promise.resolve() }
   show() { this.visible = true; this.emit('show') }
   showInactive() { this.show() }

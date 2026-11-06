@@ -1,11 +1,14 @@
 import { Notification, ipcMain, screen } from 'electron'
 import { IPC } from '../../shared/constants'
-import type { AppConfig, ChatMessage, ChatPresentation, DeepPartial, DiaryEntry, SiyuanConfig, TodoItem, TtsConfig } from '../../shared/types'
+import type { AppConfig, ChatMessage, ChatPresentation, DeepPartial, DiaryEntry, ModelAction, SiyuanConfig, TodoItem, TtsConfig } from '../../shared/types'
 import { getConfig, setConfig } from '../config'
 import { getMainWindow, clampWindowPosition, setWindowPosition } from '../window'
 import { applyPetWindowSettings, broadcastConfigChanged } from '../petSettings'
 import { refreshTrayMenu } from '../tray'
 import { dockChatWindow, getChatWindow, isChatOpen, setChatOpen } from '../chatWindow'
+import { dockPanelWindow, getPanelWindow, getPanelWindowState, setPanelOpen, updatePanelOpacity } from '../panelWindows'
+import { isPanelWindowName } from '../../shared/panelWindows'
+import type { MusicPlaybackCommand, MusicPlaybackState } from '../../shared/music'
 import { streamChat } from '../services/llm'
 import { configureControlApi, getModelCapabilities } from '../services/control'
 import { buildChatSystemPrompt, prepareChatMessages } from '../services/chatPrompt'
@@ -25,6 +28,7 @@ export function registerIpc(): void {
     setConfig(patch)
     if (patch.controlApi) await configureControlApi()
     applyPetWindowSettings(patch.pet)
+    if (patch.pet?.panelOpacity !== undefined) updatePanelOpacity()
     refreshTrayMenu()
     broadcastConfigChanged()
     return getConfig()
@@ -33,11 +37,45 @@ export function registerIpc(): void {
   // ---------- 模型列表 ----------
   ipcMain.handle(IPC.ModelsList, () => listModels())
   ipcMain.handle(IPC.ModelsActions, (_e, model3Path: string) => discoverModelActions(model3Path))
+  ipcMain.handle(IPC.ModelsRunAction, (event, action: ModelAction) => {
+    if (event.sender !== getPanelWindow('actions')?.webContents || !action) throw new Error('无效的窗口')
+    const model = getModelCapabilities()
+    if (!model) throw new Error('请先加载 Live2D 模型')
+    const actions = action.kind === 'expression' ? model.expressions : action.kind === 'motion' ? model.motions : []
+    const known = actions.find(item => item.name === action.name && item.group === action.group && item.index === action.index)
+    if (!known) throw new Error('模型中没有这个表情或动作')
+    getMainWindow()?.webContents.send(IPC.ModelsRunAction, known)
+  })
   // 贴图尺寸（主进程读 PNG 文件头，避免 app:// 下 fetch 不可用的问题）
   ipcMain.handle(IPC.ModelsTextureSizes, (_e, model3Path: string) => getModelTextureSizes(model3Path))
 
   // ---------- 音乐列表 ----------
   ipcMain.handle(IPC.MusicList, () => listMusic())
+  let playback: MusicPlaybackState = { songs: [], index: -1, playing: false, shuffle: false, progress: 0, duration: 0 }
+  ipcMain.handle(IPC.MusicPlaybackGet, () => playback)
+  ipcMain.on(IPC.MusicPlaybackState, (event, state: MusicPlaybackState) => {
+    if (event.sender !== getMainWindow()?.webContents) return
+    playback = state
+    getPanelWindow('music')?.webContents.send(IPC.MusicPlaybackState, state)
+  })
+  ipcMain.on(IPC.MusicPlaybackCommand, (event, command: MusicPlaybackCommand) => {
+    if (event.sender !== getPanelWindow('music')?.webContents || !command) return
+    if (command.type === 'play' || command.type === 'seek') {
+      if (!Number.isFinite(command.value) || command.value < 0) return
+      if (command.type === 'seek' && command.value > 1) return
+      if (command.type === 'play' && !Number.isInteger(command.value)) return
+    } else if (!['loadSongs', 'togglePlay', 'next', 'prev', 'toggleShuffle'].includes(command.type)) return
+    getMainWindow()?.webContents.send(IPC.MusicPlaybackCommand, command)
+  })
+  ipcMain.handle(IPC.PanelWindowSetOpen, (_event, name: unknown, open: boolean) => {
+    if (!isPanelWindowName(name)) throw new Error('未知窗口')
+    return setPanelOpen(name, open === true)
+  })
+  ipcMain.handle(IPC.PanelWindowGetState, () => getPanelWindowState())
+  ipcMain.handle(IPC.PanelWindowDock, (_event, name: unknown) => {
+    if (!isPanelWindowName(name)) throw new Error('未知窗口')
+    dockPanelWindow(name)
+  })
 
   // ---------- 一键打开数据目录（模型 / 音乐 / 配置） ----------
   ipcMain.handle(IPC.OpenModelsDir, () => openModelsDir(modelsDir()))

@@ -1,9 +1,36 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import { IPC } from '../shared/constants'
+import type { PanelWindowName, PanelWindowState } from '../shared/panelWindows'
+import type { MusicPlaybackCommand, MusicPlaybackState } from '../shared/music'
 import type { ControlCommand, ControlReply, ModelCapabilities } from '../shared/control'
-import type { AppConfig, ChatMessage, ChatPresentation, DeepPartial, DiaryEntry, ModelActionsInfo, ModelInfo, MusicInfo, SiyuanConfig, SiyuanNotebook, SiyuanSyncResult, TextureSizeInfo, TodoItem, TtsConfig, TtsResult } from '../shared/types'
+import type { AppConfig, ChatMessage, ChatPresentation, DeepPartial, DiaryEntry, ModelAction, ModelActionsInfo, ModelInfo, MusicInfo, SiyuanConfig, SiyuanNotebook, SiyuanSyncResult, TextureSizeInfo, TodoItem, TtsConfig, TtsResult } from '../shared/types'
 
 const api = {
+  panelWindow: {
+    setOpen: (name: PanelWindowName, open: boolean): Promise<boolean> => ipcRenderer.invoke(IPC.PanelWindowSetOpen, name, open),
+    getState: (): Promise<PanelWindowState> => ipcRenderer.invoke(IPC.PanelWindowGetState),
+    dock: (name: PanelWindowName): Promise<void> => ipcRenderer.invoke(IPC.PanelWindowDock, name),
+    onState: (callback: (state: PanelWindowState) => void): (() => void) => {
+      const listener = (_event: unknown, state: PanelWindowState): void => callback(state)
+      ipcRenderer.on(IPC.PanelWindowState, listener)
+      return () => ipcRenderer.removeListener(IPC.PanelWindowState, listener)
+    }
+  },
+  musicPlayback: {
+    getState: (): Promise<MusicPlaybackState> => ipcRenderer.invoke(IPC.MusicPlaybackGet),
+    publish: (state: MusicPlaybackState): void => ipcRenderer.send(IPC.MusicPlaybackState, state),
+    command: (command: MusicPlaybackCommand): void => ipcRenderer.send(IPC.MusicPlaybackCommand, command),
+    onState: (callback: (state: MusicPlaybackState) => void): (() => void) => {
+      const listener = (_event: unknown, state: MusicPlaybackState): void => callback(state)
+      ipcRenderer.on(IPC.MusicPlaybackState, listener)
+      return () => ipcRenderer.removeListener(IPC.MusicPlaybackState, listener)
+    },
+    onCommand: (callback: (command: MusicPlaybackCommand) => void): (() => void) => {
+      const listener = (_event: unknown, command: MusicPlaybackCommand): void => callback(command)
+      ipcRenderer.on(IPC.MusicPlaybackCommand, listener)
+      return () => ipcRenderer.removeListener(IPC.MusicPlaybackCommand, listener)
+    }
+  },
   control: {
     execute: (command: ControlCommand): Promise<unknown> => ipcRenderer.invoke(IPC.ControlExecute, command),
     status: (): Promise<{ enabled: boolean; listening: boolean; endpoint: string; host: string; port: number; modelReady: boolean; error?: string }> => ipcRenderer.invoke(IPC.ControlStatus),
@@ -110,6 +137,12 @@ const api = {
   },
 
   models: {
+    runAction: (action: ModelAction): Promise<void> => ipcRenderer.invoke(IPC.ModelsRunAction, action),
+    onAction: (callback: (action: ModelAction) => void): (() => void) => {
+      const listener = (_event: unknown, action: ModelAction): void => callback(action)
+      ipcRenderer.on(IPC.ModelsRunAction, listener)
+      return () => ipcRenderer.removeListener(IPC.ModelsRunAction, listener)
+    },
     list: (): Promise<ModelInfo[]> => ipcRenderer.invoke(IPC.ModelsList),
     actions: (model3Path: string): Promise<ModelActionsInfo> =>
       ipcRenderer.invoke(IPC.ModelsActions, model3Path),

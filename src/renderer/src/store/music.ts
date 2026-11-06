@@ -1,7 +1,9 @@
 import { create } from 'zustand'
 import type { MusicInfo } from '@shared/types'
+import type { MusicPlaybackState } from '@shared/music'
 
 const STATE_KEY = 'awa-music-state'
+const remote = window.location.hash.startsWith('#panel=')
 
 interface MusicState {
   songs: MusicInfo[]
@@ -20,9 +22,19 @@ interface MusicState {
 }
 
 // 单例音频：不随面板卸载而停止，关闭面板继续播
-const audio = new Audio()
+const audio = remote ? null : new Audio()
 
 export const useMusicStore = create<MusicState>((set, get) => {
+  if (!audio) return {
+    songs: [], index: -1, playing: false, shuffle: false, progress: 0, duration: 0,
+    loadSongs: async () => { window.api.musicPlayback.command({ type: 'loadSongs' }) },
+    play: value => window.api.musicPlayback.command({ type: 'play', value }),
+    seek: value => window.api.musicPlayback.command({ type: 'seek', value }),
+    togglePlay: () => window.api.musicPlayback.command({ type: 'togglePlay' }),
+    next: () => window.api.musicPlayback.command({ type: 'next' }),
+    prev: () => window.api.musicPlayback.command({ type: 'prev' }),
+    toggleShuffle: () => window.api.musicPlayback.command({ type: 'toggleShuffle' })
+  }
   const persist = (i: number, sh: boolean): void => {
     try {
       localStorage.setItem(STATE_KEY, JSON.stringify({ lastIndex: i, shuffle: sh }))
@@ -132,3 +144,27 @@ export const useMusicStore = create<MusicState>((set, get) => {
     }
   }
 })
+
+/** The pet owns audio; the music window sends controls and receives playback state. */
+export function bindMusicPlayback(): () => void {
+  if (remote) {
+    let alive = true
+    let received = false
+    const off = window.api.musicPlayback.onState(state => { received = true; useMusicStore.setState(state) })
+    void window.api.musicPlayback.getState().then(state => { if (alive && !received) useMusicStore.setState(state) })
+    return () => { alive = false; off() }
+  }
+  const publish = (): void => {
+    const { songs, index, playing, shuffle, progress, duration } = useMusicStore.getState()
+    const state: MusicPlaybackState = { songs, index, playing, shuffle, progress, duration }
+    window.api.musicPlayback.publish(state)
+  }
+  const offState = useMusicStore.subscribe(publish)
+  const offCommand = window.api.musicPlayback.onCommand(command => {
+    const state = useMusicStore.getState()
+    if (command.type === 'play' || command.type === 'seek') state[command.type](command.value)
+    else void state[command.type]()
+  })
+  publish()
+  return () => { offState(); offCommand() }
+}

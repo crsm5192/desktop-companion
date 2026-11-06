@@ -37,6 +37,7 @@ function modelsDir(): string {
 
 /** 音乐目录：打包后 exe 旁，开发用 public */
 function musicDir(): string {
+  if (process.env.DESKTOP_COMPANION_MUSIC_DIR) return resolve(process.env.DESKTOP_COMPANION_MUSIC_DIR)
   return app.isPackaged
     ? externalMusicDir()
     : join(app.getAppPath(), 'src', 'renderer', 'public', 'music')

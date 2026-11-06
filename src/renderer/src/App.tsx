@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
-import { useUIStore } from './store/ui'
+import type { PanelWindowName, PanelWindowState } from '@shared/panelWindows'
 import { usePetStore } from './store/pet'
-import { useMusicStore } from './store/music'
+import { bindMusicPlayback, useMusicStore } from './store/music'
 import { useModelActionsStore } from './store/modelActions'
 import { useInteractionStore } from './store/interaction'
 import { useSpeechStore } from './store/speech'
@@ -9,18 +9,13 @@ import { useReplyBubbleStore } from './store/replyBubble'
 import { usePetControl } from './hooks/usePetControl'
 import { CLICK_DISTANCE, petInteractionRef } from './lib/petInteraction'
 import PetStage from './components/pet/PetStage'
+import { live2dActionRef } from './components/pet/Live2DPet'
 import ModelActionBar from './components/pet/ModelActionBar'
 import SpeechBubble from './components/pet/SpeechBubble'
-import MusicPanel from './components/music/MusicPanel'
-import PomodoroPanel from './components/pomodoro/PomodoroPanel'
-import TodoPanel from './components/todo/TodoPanel'
-import DiaryPanel from './components/diary/DiaryPanel'
-import SettingsPanel from './components/settings/SettingsPanel'
 
 export default function App(): JSX.Element {
   usePetControl()
-  const panel = useUIStore((s) => s.panel)
-  const setPanel = useUIStore((s) => s.setPanel)
+  const [panels, setPanels] = useState<PanelWindowState>({})
   const locked = usePetStore((s) => s.locked)
   const interactionEnabled = usePetStore((s) => s.interactionEnabled)
   const modelReady = usePetStore((s) => s.modelReady)
@@ -53,7 +48,14 @@ export default function App(): JSX.Element {
     return () => { offState(); offSpeaking(); offLevel(); offPresentation(); useSpeechStore.getState().stopSpeaking() }
   }, [])
 
-  const toggle = (p: NonNullable<typeof panel>): void => setPanel(panel === p ? null : p)
+  useEffect(() => {
+    const off = window.api.panelWindow.onState(setPanels)
+    void window.api.panelWindow.getState().then(setPanels)
+    return off
+  }, [])
+  useEffect(bindMusicPlayback, [])
+  useEffect(() => window.api.models.onAction(action => live2dActionRef.current?.(action)), [])
+  const toggle = (name: PanelWindowName): void => { void window.api.panelWindow.setOpen(name, !panels[name]) }
 
   /** 模型复位：停止互动，平移归零（回窗口正中）+ 缩放回 1×。 */
   const applyModelReset = (): void => {
@@ -188,10 +190,10 @@ export default function App(): JSX.Element {
         <button className="toolbar-button" aria-pressed={chatOpen} title="对话" onClick={() => {
           void window.api.chatWindow.setOpen(!chatOpen).then(setChatOpen)
         }}>对话</button>
-        <button className="toolbar-button" aria-pressed={panel === 'music'} title="音乐" onClick={() => toggle('music')}>音乐</button>
-        <button className="toolbar-button" aria-pressed={panel === 'pomodoro'} title="番茄钟" onClick={() => toggle('pomodoro')}>番茄</button>
-        <button className="toolbar-button" aria-pressed={panel === 'todo'} title="待办" onClick={() => toggle('todo')}>待办</button>
-        <button className="toolbar-button" aria-pressed={panel === 'diary'} title="日记" onClick={() => toggle('diary')}>日记</button>
+        <button className="toolbar-button" aria-pressed={!!panels.music} title="音乐" onClick={() => toggle('music')}>音乐</button>
+        <button className="toolbar-button" aria-pressed={!!panels.pomodoro} aria-label="番茄钟" title="番茄钟" onClick={() => toggle('pomodoro')}>🍅钟</button>
+        <button className="toolbar-button" aria-pressed={!!panels.todo} title="待办" onClick={() => toggle('todo')}>待办</button>
+        <button className="toolbar-button" aria-pressed={!!panels.diary} title="日记" onClick={() => toggle('diary')}>日记</button>
         <button
           className="toolbar-button interaction-toggle"
           role="switch"
@@ -204,8 +206,8 @@ export default function App(): JSX.Element {
           互动
         </button>
         {/* 模型表情/动作：与其它按钮同级，随时可用（不再依赖锁定模式） */}
-        <ModelActionBar expressions={modelExpressions} motions={modelMotions} />
-        <button className="toolbar-button" aria-pressed={panel === 'settings'} title="设置" onClick={() => toggle('settings')}>设置</button>
+        <ModelActionBar expressions={modelExpressions} motions={modelMotions} open={!!panels.actions} onToggle={() => toggle('actions')} />
+        <button className="toolbar-button" aria-pressed={!!panels.settings} title="设置" onClick={() => toggle('settings')}>设置</button>
       </div>
 
       {/* 锁定模式：浮动缩放滑条（桌宠边） */}
@@ -230,11 +232,6 @@ export default function App(): JSX.Element {
         </div>
       )}
 
-      {panel === 'music' && <MusicPanel />}
-      {panel === 'pomodoro' && <PomodoroPanel />}
-      {panel === 'todo' && <TodoPanel />}
-      {panel === 'diary' && <DiaryPanel />}
-      {panel === 'settings' && <SettingsPanel />}
     </div>
   )
 }

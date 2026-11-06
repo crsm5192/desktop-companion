@@ -1,7 +1,5 @@
 import { useEffect, useState } from 'react'
 import type { AppConfig, ModelInfo, SiyuanNotebook } from '@shared/types'
-import { usePetStore } from '../../store/pet'
-import { refreshCharacter } from '../../hooks/useCharacter'
 
 export default function SettingsPanel(): JSX.Element {
   const [cfg, setCfg] = useState<AppConfig | null>(null)
@@ -61,25 +59,21 @@ export default function SettingsPanel(): JSX.Element {
   const save = async (): Promise<void> => {
     setSaveError('')
     try {
-    // 工具栏或托盘可在面板打开期间切换开关，保存设置时保留最新状态。
-    const updated = await window.api.setConfig({
-      ...cfg,
-      pet: { ...cfg.pet, interactionEnabled: usePetStore.getState().interactionEnabled, edgeSnapEnabled: usePetStore.getState().edgeSnapEnabled }
-    })
-    setCfg(updated)
-    // 即时生效：写共享 store，PetStage/App 订阅后立即重载/刷新
-    usePetStore.getState().setModel(cfg.pet.modelPath, cfg.pet.scale)
-    usePetStore.getState().setLocked(cfg.pet.locked)
-    usePetStore.getState().setEyeTracking(cfg.pet.eyeTracking)
-    usePetStore.getState().setOpacity(cfg.pet.opacity)
-    // 角色名即时刷新（聊天标题/气泡落款/占位文字）
-    refreshCharacter()
-    setSaved(true)
-    setTimeout(() => setSaved(false), 1500)
-    const status = await window.api.control.status()
-    setApiStatus(status.error ? `连接接口未开启：${status.error}` : status.listening ? `桌宠监听 ${status.host}:${status.port}；Agent 连接 ${status.endpoint}` : '接口已关闭')
-    if (chatPrompt !== null) setChatPrompt(await window.api.chat.prompt())
-    if (agentPrompt !== null) setAgentPrompt(await window.api.chat.prompt('agent'))
+      // Preserve toolbar/tray changes and model placement made while this window was open.
+      const latest = (await window.api.getConfig()).pet
+      const updated = await window.api.setConfig({
+        ...cfg,
+        pet: { ...cfg.pet, interactionEnabled: latest.interactionEnabled, edgeSnapEnabled: latest.edgeSnapEnabled,
+          winX: latest.winX, winY: latest.winY, offsetX: latest.offsetX, offsetY: latest.offsetY, scale: latest.scale }
+      })
+      // The main process notifies the pet and other windows to apply saved configuration.
+      setCfg(updated)
+      setSaved(true)
+      setTimeout(() => setSaved(false), 1500)
+      const status = await window.api.control.status()
+      setApiStatus(status.error ? `连接接口未开启：${status.error}` : status.listening ? `桌宠监听 ${status.host}:${status.port}；Agent 连接 ${status.endpoint}` : '接口已关闭')
+      if (chatPrompt !== null) setChatPrompt(await window.api.chat.prompt())
+      if (agentPrompt !== null) setAgentPrompt(await window.api.chat.prompt('agent'))
     } catch (err) { setSaveError(err instanceof Error ? err.message : String(err)) }
   }
 
@@ -481,7 +475,6 @@ export default function SettingsPanel(): JSX.Element {
               const v = e.target.value
               patch({ pet: { ...cfg.pet, modelPath: v } })
               // 立即切换 + 立即持久化（不依赖「保存」按钮）
-              usePetStore.getState().setModel(v, cfg.pet.scale)
               void window.api.setConfig({ pet: { modelPath: v } })
             }}
           >
@@ -527,7 +520,6 @@ export default function SettingsPanel(): JSX.Element {
             onChange={(e) => {
               const v = Number(e.target.value)
               patch({ pet: { ...cfg.pet, eyeTrackingStrength: v } })
-              usePetStore.getState().setEyeTrackingStrength(v)
               void window.api.setConfig({ pet: { eyeTrackingStrength: v } })
             }}
           />
@@ -551,9 +543,10 @@ export default function SettingsPanel(): JSX.Element {
           <span>{cfg.pet.frameScale.toFixed(2)}×</span>
         </label>
         <label className="row">
-          <span>不透明度</span>
+          <span>桌宠不透明度</span>
           <input
             type="range"
+            aria-label="桌宠不透明度"
             min={0.2}
             max={1}
             step={0.05}
@@ -561,11 +554,27 @@ export default function SettingsPanel(): JSX.Element {
             onChange={(e) => {
               const v = Number(e.target.value)
               patch({ pet: { ...cfg.pet, opacity: v } })
-              usePetStore.getState().setOpacity(v)
               void window.api.setConfig({ pet: { opacity: v } })
             }}
           />
           <span>{Math.round(cfg.pet.opacity * 100)}%</span>
+        </label>
+        <label className="row">
+          <span>弹窗不透明度</span>
+          <input
+            type="range"
+            aria-label="弹窗不透明度"
+            min={0.2}
+            max={1}
+            step={0.05}
+            value={cfg.pet.panelOpacity}
+            onChange={(e) => {
+              const v = Number(e.target.value)
+              patch({ pet: { ...cfg.pet, panelOpacity: v } })
+              void window.api.setConfig({ pet: { panelOpacity: v } })
+            }}
+          />
+          <span>{Math.round(cfg.pet.panelOpacity * 100)}%</span>
         </label>
       </fieldset>
 

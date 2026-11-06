@@ -5,7 +5,7 @@ const path = require('node:path')
 const http = require('node:http')
 const net = require('node:net')
 const os = require('node:os')
-const { spawn } = require('node:child_process')
+const { spawn, execFileSync } = require('node:child_process')
 const { WebSocket } = require('ws')
 const root = path.resolve(__dirname, '..')
 const argument = name => { const index = process.argv.indexOf(name); return index < 0 ? undefined : process.argv[index + 1] }
@@ -70,6 +70,34 @@ function audioFixture() {
   }
   return result
 }
+function dragNativeWindow(handle, scale) {
+  const source = `Add-Type -TypeDefinition @'
+using System;
+using System.Runtime.InteropServices;
+using System.Threading;
+public static class PanelMouse {
+  [StructLayout(LayoutKind.Sequential)] public struct Rect { public int Left, Top, Right, Bottom; }
+  [StructLayout(LayoutKind.Sequential)] public struct Point { public int X, Y; }
+  [DllImport("user32.dll")] static extern bool GetWindowRect(IntPtr handle, out Rect rect);
+  [DllImport("user32.dll")] static extern bool GetCursorPos(out Point point);
+  [DllImport("user32.dll")] static extern bool SetCursorPos(int x, int y);
+  [DllImport("user32.dll")] static extern bool SetForegroundWindow(IntPtr handle);
+  [DllImport("user32.dll")] static extern void mouse_event(uint flags, uint x, uint y, uint data, UIntPtr extra);
+  public static void Drag(long handle, double scale) {
+    Rect bounds; Point cursor; GetCursorPos(out cursor); GetWindowRect(new IntPtr(handle), out bounds);
+    int x = bounds.Left + (int)(36 * scale), y = bounds.Top + (int)(24 * scale);
+    try {
+      SetForegroundWindow(new IntPtr(handle)); SetCursorPos(x, y); Thread.Sleep(100);
+      mouse_event(2, 0, 0, 0, UIntPtr.Zero); Thread.Sleep(120);
+      for (int step = 1; step <= 6; step++) { SetCursorPos(x + (int)(8 * step * scale), y - (int)(4 * step * scale)); Thread.Sleep(60); }
+      mouse_event(4, 0, 0, 0, UIntPtr.Zero); Thread.Sleep(120);
+    } finally { mouse_event(4, 0, 0, 0, UIntPtr.Zero); SetCursorPos(cursor.X, cursor.Y); }
+  }
+}
+'@
+[PanelMouse]::Drag(${handle}, ${scale})`
+  execFileSync('powershell.exe', ['-NoProfile', '-EncodedCommand', Buffer.from(source, 'utf16le').toString('base64')], { windowsHide: true, timeout: 15000, stdio: 'pipe' })
+}
 async function main() {
   fs.mkdirSync(artifacts, { recursive: true }); fs.mkdirSync(profile, { recursive: true })
   const report = { model: modelPath, checks: [], llmCalls: 0, ttsCalls: 0, screenshots: [] }
@@ -119,7 +147,10 @@ async function main() {
     tts: { server: { baseUrl: `http://127.0.0.1:${fixture.address().port}`, voice: 'fixture', lang: '', langAdapt: 'off' } },
     chat: { performanceEnabled: true }
   }))
-  const environment = { ...process.env, DESKTOP_COMPANION_DATA_DIR: profile, DESKTOP_COMPANION_MODELS_DIR: path.resolve(modelsDirectory) }
+  const musicDirectory = path.join(profile, 'music')
+  fs.mkdirSync(musicDirectory, { recursive: true })
+  fs.writeFileSync(path.join(musicDirectory, 'window-test.wav'), wav)
+  const environment = { ...process.env, DESKTOP_COMPANION_DATA_DIR: profile, DESKTOP_COMPANION_MODELS_DIR: path.resolve(modelsDirectory), DESKTOP_COMPANION_MUSIC_DIR: musicDirectory }
   delete environment.ELECTRON_RUN_AS_NODE
   let executable = argument('--executable')
   if (executable && process.argv.includes('--portable')) {
@@ -149,6 +180,7 @@ async function main() {
     assert.equal((await api.request('model.get')).error.code, 'UNAUTHORIZED')
     await request('authenticate', { token })
     await waitFor(async () => (await request('status.get')).modelReady, 120000)
+    await waitFor(() => pet.evaluate('!!document.querySelector(".pet-wrap canvas") && !document.querySelector(".live2d-badge")'), 120000)
     assert.equal(await pet.evaluate('window.api.chat.history.get().then(messages=>messages.length)'), 0, 'independent test profile imported user chat history')
     const model = await snapshot()
     assert.ok(model.expressions.length >= 20); assert.ok(model.motions.length >= 8)
@@ -159,6 +191,35 @@ async function main() {
       const image = await pet.send('Page.captureScreenshot', { format: 'png' })
       fs.writeFileSync(path.join(artifacts, name + '.png'), Buffer.from(image.data, 'base64'))
       report.screenshots.push(name + '.png')
+    }
+    if (process.argv.includes('--opacity-only')) {
+      const names = ['chat', 'music', 'pomodoro', 'todo', 'diary', 'actions', 'settings']
+      await pet.evaluate('window.api.setConfig({pet:{opacity:1,panelOpacity:0.55}})')
+      for (const name of names) await pet.evaluate(`window.api.panelWindow.setOpen(${JSON.stringify(name)},true)`)
+      const settingsTarget = await waitFor(async () => (await pages()).find(page => page.url.endsWith('#panel=settings')))
+      const settings = await cdp(settingsTarget.webSocketDebuggerUrl)
+      try {
+        await waitFor(() => settings.evaluate(`!!document.querySelector('input[aria-label="弹窗不透明度"]')`))
+        await settings.evaluate("window.api.panelWindow.setOpen('music',false)")
+        const nativeOpacity = name => mainInspector.evaluate(`process.getBuiltinModule('module').createRequire(process.cwd()+'/package.json')('electron').BrowserWindow.getAllWindows().find(win=>win.webContents.getURL().endsWith(${JSON.stringify(name === 'chat' ? '#chat' : '#panel=' + name)}))?.getOpacity()`)
+        const adjust = (label, value) => settings.evaluate(`(() => { const input=document.querySelector(${JSON.stringify('input[aria-label="' + label + '"]')}); input.scrollIntoView({block:'center'}); Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(input,${JSON.stringify(String(value))}); input.dispatchEvent(new Event('input',{bubbles:true})); })()`)
+        await adjust('弹窗不透明度', 0.7)
+        for (const name of names) await waitFor(async () => Math.abs(await nativeOpacity(name) - 0.7) < 0.01)
+        assert.equal(await pet.evaluate(`Number(getComputedStyle(document.querySelector('.pet-wrap')).opacity)`), 1)
+        await adjust('桌宠不透明度', 0.35)
+        await waitFor(() => pet.evaluate(`Math.abs(Number(getComputedStyle(document.querySelector('.pet-wrap')).opacity)-0.35)<0.01`))
+        for (const name of names) assert.ok(Math.abs(await nativeOpacity(name) - 0.7) < 0.01)
+        assert.deepEqual(await settings.evaluate('window.api.getConfig().then(config=>({pet:config.pet.opacity,panels:config.pet.panelOpacity}))'), {pet:0.35,panels:0.7})
+        await mainInspector.evaluate(`process.getBuiltinModule('module').createRequire(process.cwd()+'/package.json')('electron').BrowserWindow.getAllWindows().find(win=>win.webContents.getURL().endsWith('#panel=todo')).destroy()`)
+        await settings.evaluate("window.api.panelWindow.setOpen('todo',true)")
+        await waitFor(async () => Math.abs(await nativeOpacity('todo') - 0.7) < 0.01)
+        const image = await settings.send('Page.captureScreenshot', { format: 'png' })
+        fs.writeFileSync(path.join(artifacts, 'panel-settings-opacity.png'), Buffer.from(image.data, 'base64'))
+        report.screenshots.push('panel-settings-opacity.png')
+        pass('separate opacity sliders independently control the pet and all seven native windows; values persist and apply to hidden plus newly created windows')
+        report.success = true
+        return
+      } finally { settings.socket.terminate() }
     }
     const verifyHandMotion = async () => {
       const ids = ['Movement2', 'Param62', 'Param59', 'Param60', 'Param61', 'LArm', 'LForearm', 'LWrist', 'RArm', 'ShoulderY', 'ShoulderZ']
@@ -343,6 +404,98 @@ async function main() {
     assert.equal(await pet.evaluate('window.__chatClicks'), 2)
     assert.equal((await pages()).find(page => page.url.includes('#chat')).id, chatTarget.id)
     pass('closing and clicking once reopens the same chat window')
+    const panelClients = []
+    try {
+      assert.equal(await pet.evaluate(`document.querySelector('.toolbar button[title="番茄钟"]').textContent`), '🍅钟')
+      await pet.evaluate('window.api.setConfig({pet:{panelOpacity:0.55}})')
+      await waitFor(() => pet.evaluate(`Number(getComputedStyle(document.querySelector('.pet-wrap')).opacity) === 1`))
+      const nativePanel = name => `process.getBuiltinModule('module').createRequire(process.cwd() + '/package.json')('electron').BrowserWindow.getAllWindows().find(window => window.webContents.getURL().endsWith(${JSON.stringify(name === 'chat' ? '#chat' : '#panel=' + name)}))`
+      const dragPanel = async name => {
+        const windowInfo = await mainInspector.evaluate(`(() => { const win=${nativePanel(name)}; const {screen}=process.getBuiltinModule('module').createRequire(process.cwd()+'/package.json')('electron'); return {handle:win.getNativeWindowHandle().readBigUInt64LE().toString(),bounds:win.getBounds(),scale:screen.getDisplayMatching(win.getBounds()).scaleFactor}; })()`)
+        dragNativeWindow(windowInfo.handle, windowInfo.scale)
+        const moved = await mainInspector.evaluate(`${nativePanel(name)}.getBounds()`)
+        assert.ok(Math.abs(moved.x-windowInfo.bounds.x)>10, name + ' header does not move its native window')
+        const petPosition = await pet.evaluate('window.api.getPetPosition()')
+        await pet.evaluate(`window.api.setPetPosition(${petPosition[0]+15},${petPosition[1]})`)
+        await pause(100)
+        assert.deepEqual(await mainInspector.evaluate(`${nativePanel(name)}.getBounds()`), moved, 'manually dragged panel still follows the pet')
+        await pet.evaluate(`window.api.setPetPosition(${petPosition[0]},${petPosition[1]})`)
+        return moved
+      }
+      const opacity = await mainInspector.evaluate(`${nativePanel('chat')}.getOpacity()`)
+      assert.ok(Math.abs(opacity - 0.55) < 0.01)
+      assert.equal(await chat.evaluate(`getComputedStyle(document.querySelector('.chat-window-header')).getPropertyValue('-webkit-app-region')`), 'drag')
+      await dragPanel('chat')
+      report.panelWindows = []
+      for (const [name, title] of [['music', '音乐'], ['pomodoro', '番茄钟'], ['todo', '待办'], ['diary', '日记'], ['actions', '表情与动作'], ['settings', '设置']]) {
+        await pet.evaluate(`document.querySelector(${JSON.stringify(name === 'actions' ? '.model-actions-toggle' : '.toolbar button[title="' + title + '"]')}).click()`)
+        const target = await waitFor(async () => (await pages()).find(page => page.url.endsWith('#panel=' + name)))
+        const client = await cdp(target.webSocketDebuggerUrl); panelClients.push(client)
+        await waitFor(() => client.evaluate('!!document.querySelector(".panel-window .chat-window-header")'))
+        assert.equal(await mainInspector.evaluate(`${nativePanel(name)}.isVisible()`), true)
+        assert.ok(Math.abs(await mainInspector.evaluate(`${nativePanel(name)}.getOpacity()`) - 0.55) < 0.01)
+        assert.equal(await client.evaluate(`getComputedStyle(document.querySelector('.chat-window-header')).getPropertyValue('-webkit-app-region')`), 'drag')
+        assert.equal(await client.evaluate(`getComputedStyle(document.querySelector('.chat-window-close')).getPropertyValue('-webkit-app-region')`), 'no-drag')
+        const draggedBounds = await dragPanel(name)
+        if (name === 'todo' || name === 'diary') {
+          const selector = name === 'todo' ? '.todo-input input' : '.diary-title'
+          await client.evaluate(`(() => { const input=document.querySelector(${JSON.stringify(selector)}); Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(input,'保留窗口草稿'); input.dispatchEvent(new Event('input',{bubbles:true})); })()`)
+        }
+        if (name === 'pomodoro') {
+          await client.evaluate(`document.querySelector('.pomodoro-actions button').click()`)
+          await waitFor(() => client.evaluate(`document.querySelector('.pomodoro-actions button').textContent === '暂停'`))
+        }
+        if (name === 'music') {
+          await waitFor(() => client.evaluate(`!!document.querySelector('.music-item')`))
+          await client.evaluate(`document.querySelector('.play-btn').click()`)
+          await waitFor(() => pet.evaluate(`!!document.querySelector('.now-playing')`))
+          assert.equal(await client.evaluate(`document.querySelector('.play-btn').textContent`), '⏸')
+        }
+        if (name === 'actions') {
+          await waitFor(() => client.evaluate(`document.querySelectorAll('.model-action-btn').length >= 20`))
+          await client.evaluate(`Array.from(document.querySelectorAll('.model-action-btn')).find(button=>button.title==='脸红').click()`)
+          await waitFor(async () => value(await snapshot(), 'key7') > 0.7)
+          await pause(3800)
+          assert.ok(value(await snapshot(), 'key7') > 0.7, 'manual expression no longer stays selected')
+          pass('independent expression window drives the actual pet model')
+          await request('control.reset')
+        }
+        await client.evaluate(`document.querySelector('.chat-window-close').click()`)
+        await waitFor(async () => !await mainInspector.evaluate(`${nativePanel(name)}.isVisible()`))
+        await pause(1200)
+        if (name === 'music') assert.ok(await pet.evaluate(`!!document.querySelector('.now-playing')`), 'closing music stopped playback')
+        await pet.evaluate(`window.api.panelWindow.setOpen(${JSON.stringify(name)},true)`)
+        await waitFor(() => mainInspector.evaluate(`${nativePanel(name)}.isVisible()`))
+        assert.equal((await pages()).find(page => page.url.endsWith('#panel=' + name)).id, target.id)
+        assert.deepEqual(await mainInspector.evaluate(`${nativePanel(name)}.getBounds()`), draggedBounds, 'reopening loses the dragged position')
+        if (name === 'todo' || name === 'diary') assert.equal(await client.evaluate(`document.querySelector(${JSON.stringify(name === 'todo' ? '.todo-input input' : '.diary-title')}).value`), '保留窗口草稿')
+        if (name === 'pomodoro') assert.notEqual(await client.evaluate(`document.querySelector('.pomodoro-time').textContent.trim()`), '25:00', 'hidden timer did not continue')
+        if (name === 'settings') {
+          await waitFor(() => client.evaluate(`!!document.querySelector('input[aria-label="弹窗不透明度"]')`))
+          await client.evaluate(`(() => { const input=document.querySelector('input[aria-label="弹窗不透明度"]'); input.scrollIntoView({block:'center'}); Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(input,'0.7'); input.dispatchEvent(new Event('input',{bubbles:true})); })()`)
+          await waitFor(async () => Math.abs(await mainInspector.evaluate(`${nativePanel('chat')}.getOpacity()`) - 0.7) < 0.01)
+          assert.equal(await pet.evaluate(`Number(getComputedStyle(document.querySelector('.pet-wrap')).opacity)`), 1, 'popup slider changed pet opacity')
+          await client.evaluate(`(() => { const input=document.querySelector('input[aria-label="桌宠不透明度"]'); Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(input,'0.35'); input.dispatchEvent(new Event('input',{bubbles:true})); })()`)
+          await waitFor(() => pet.evaluate(`Math.abs(Number(getComputedStyle(document.querySelector('.pet-wrap')).opacity)-0.35)<0.01`))
+          assert.ok(Math.abs(await mainInspector.evaluate(`${nativePanel('chat')}.getOpacity()`) - 0.7) < 0.01, 'pet slider changed popup opacity')
+          for (const windowName of ['music','pomodoro','todo','diary','actions','settings']) assert.ok(Math.abs(await mainInspector.evaluate(`${nativePanel(windowName)}.getOpacity()`) - 0.7) < 0.01)
+          const saved = await client.evaluate('window.api.getConfig().then(config=>({pet:config.pet.opacity,panels:config.pet.panelOpacity}))')
+          assert.deepEqual(saved, {pet:0.35,panels:0.7}, 'separate opacity values were not persisted')
+          await mainInspector.evaluate(`${nativePanel('todo')}.destroy()`)
+          await client.evaluate("window.api.panelWindow.setOpen('todo',true)")
+          await waitFor(async () => Math.abs(await mainInspector.evaluate(`${nativePanel('todo')}.getOpacity()`) - 0.7) < 0.01)
+          await client.evaluate("window.api.panelWindow.setOpen('todo',false)")
+          pass('separate sliders independently update and save pet and popup opacity; hidden and newly created windows use the saved popup value')
+        }
+        const image = await client.send('Page.captureScreenshot', { format: 'png' })
+        fs.writeFileSync(path.join(artifacts, 'panel-' + name + '.png'), Buffer.from(image.data, 'base64'))
+        report.screenshots.push('panel-' + name + '.png')
+        await client.evaluate(`window.api.panelWindow.setOpen(${JSON.stringify(name)},false)`)
+        report.panelWindows.push(name)
+      }
+      pass('all seven native windows move by dragging the actual title bar, detach from the pet, and preserve their position; drafts, background music, timer and tomato label verified')
+      await pet.evaluate('window.api.setConfig({pet:{opacity:1,panelOpacity:1}})')
+    } finally { for (const client of panelClients) client.socket.terminate() }
     if (process.argv.includes('--chat-window-only')) { await screenshot('taskbar-toolbar'); report.success = true; return }
     await chat.evaluate(`(() => { const checkbox = document.querySelector('.chat-window-options input[type="checkbox"]'); if (checkbox.checked) checkbox.click(); const input = document.querySelector('textarea'); Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype,'value').set.call(input,'你好'); input.dispatchEvent(new Event('input',{bubbles:true})); })()`)
     await waitFor(() => chat.evaluate(`Array.from(document.querySelectorAll('button')).some(button => button.textContent.trim() === '发送' && !button.disabled)`))
@@ -497,7 +650,8 @@ async function main() {
     child.kill()
     await Promise.race([new Promise(resolve => child.once('exit', resolve)), pause(5000)])
     fixture.closeAllConnections(); await new Promise(resolve => fixture.close(resolve))
-    fs.writeFileSync(path.join(artifacts, 'live-test-report.json'), JSON.stringify(report, null, 2))
+    const reportName = process.argv.includes('--opacity-only') ? 'panel-opacity-test-report.json' : process.argv.includes('--chat-window-only') ? 'panel-windows-test-report.json' : 'live-test-report.json'
+    fs.writeFileSync(path.join(artifacts, reportName), JSON.stringify(report, null, 2))
     fs.writeFileSync(path.join(artifacts, 'electron-test.log'), logs)
   }
 }
