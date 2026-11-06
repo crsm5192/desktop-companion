@@ -1,9 +1,12 @@
 import { create } from 'zustand'
+import type { AntialiasingSamples } from '@shared/petRendering'
 
 interface PetState {
   modelPath: string
   scale: number
   opacity: number
+  antialiasing: boolean
+  antialiasingSamples: AntialiasingSamples
   locked: boolean
   interactionEnabled: boolean
   edgeSnapEnabled: boolean
@@ -17,6 +20,7 @@ interface PetState {
   setModel: (modelPath: string, scale: number) => void
   setScale: (scale: number) => void
   setOpacity: (opacity: number) => void
+  setAntialiasing: (enabled: boolean, samples: AntialiasingSamples) => void
   setLocked: (locked: boolean) => void
   setInteractionEnabled: (enabled: boolean) => void
   setEdgeSnapEnabled: (enabled: boolean) => void
@@ -34,6 +38,8 @@ export const usePetStore = create<PetState>((set) => ({
   modelPath: '',
   scale: 1,
   opacity: 1,
+  antialiasing: false,
+  antialiasingSamples: 2,
   locked: false,
   interactionEnabled: false,
   edgeSnapEnabled: false,
@@ -47,6 +53,7 @@ export const usePetStore = create<PetState>((set) => ({
   setModel: (modelPath, scale) => set({ modelPath, scale }),
   setScale: (scale) => set({ scale }),
   setOpacity: (opacity) => set({ opacity }),
+  setAntialiasing: (antialiasing, antialiasingSamples) => set({ antialiasing, antialiasingSamples }),
   setLocked: (locked) => set({ locked }),
   setInteractionEnabled: (interactionEnabled) => set({ interactionEnabled }),
   setEdgeSnapEnabled: (edgeSnapEnabled) => set({ edgeSnapEnabled }),

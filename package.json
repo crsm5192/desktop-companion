@@ -1,6 +1,6 @@
 {
   "name": "desktop-companion",
-  "version": "0.6.0",
+  "version": "0.7.0",
   "description": "通用桌面伴侣 — Live2D 桌面宠物 + OpenAI 兼容对话 + TTS 语音 + 音乐播放器 + 番茄钟/待办/日记 + 思源笔记同步",
   "main": "./out/main/index.js",
   "author": "dorop",
@@ -18,6 +18,7 @@
     "test:chat": "node scripts/test-chat.cjs",
     "test:chat-window": "node scripts/test-chat-window.cjs",
     "test:window-placement": "node scripts/test-window-placement.cjs",
+    "test:pet-rendering": "node scripts/test-pet-rendering.cjs",
     "test:control:live": "node scripts/test-control-live.cjs",
     "build:win": "npm run build && electron-builder --win",
     "build:win:portable": "npm run build && electron-builder --win portable && node scripts/copy-models.js",

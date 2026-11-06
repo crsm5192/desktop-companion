@@ -1,5 +1,6 @@
 // 主进程 / 渲染进程共享的类型定义
 import type { ControlApiConfig, PerformanceCue } from './control'
+import type { AntialiasingSamples } from './petRendering'
 
 export interface ChatMessage {
   role: 'system' | 'user' | 'assistant'
@@ -123,6 +124,10 @@ export interface PetConfig {
   opacity: number
   /** 弹出窗口的不透明度，独立于桌宠，0.2~1 */
   panelOpacity: number
+  /** 超采样抗锯齿；关闭时沿用原有 1 倍画布 */
+  antialiasing: boolean
+  /** 每个屏幕像素的采样倍率，2 / 4 / 8 */
+  antialiasingSamples: AntialiasingSamples
   /** 框架缩放：整个窗口（桌宠框架）的倍率 0.5~2，模型随框架自动适配 */
   frameScale: number
   /** 点击穿透（穿透到桌面） */

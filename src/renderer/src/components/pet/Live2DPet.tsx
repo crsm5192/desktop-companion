@@ -7,6 +7,8 @@ import { prepareTextures } from '../../lib/textureDownscale'
 import { attachPetInteraction } from '../../lib/live2dInteraction'
 import { createLive2DController, live2dControllerRef, type Live2DController } from '../../lib/live2dControl'
 import type { ModelAction, ModelActionsInfo } from '@shared/types'
+import { petRenderResolution } from '@shared/petRendering'
+import { petInteractionRef } from '../../lib/petInteraction'
 
 interface Props {
   modelPath: string
@@ -105,6 +107,7 @@ export default function Live2DPet({ modelPath, opacity, actions }: Props): JSX.E
     let canvas: HTMLCanvasElement | null = null
     let cleanupListeners: (() => void) | null = null
     let onResize: (() => void) | null = null
+    let unsubscribeRendering: (() => void) | null = null
     let interaction: ReturnType<typeof attachPetInteraction> | null = null
     let controller: Live2DController | null = null
     usePetStore.getState().setModelReady(false)
@@ -135,13 +138,37 @@ export default function Live2DPet({ modelPath, opacity, actions }: Props): JSX.E
           width: w,
           height: h,
           backgroundAlpha: 0,
-          antialias: false,
+          antialias: true, // Baseline MSAA stays enabled; the optional SSAA multiplier is applied below.
           autoDensity: true,
           preference: 'webgl',
           preserveDrawingBuffer: true,
           resolution: 1
         })
         if (cancelled) { app.destroy(true); return }
+
+        const gl = canvas.getContext('webgl2') ?? canvas.getContext('webgl')
+        const viewportLimits = gl?.getParameter(gl.MAX_VIEWPORT_DIMS) as Int32Array | undefined
+        const maxDimension = gl ? Math.min(
+          gl.getParameter(gl.MAX_TEXTURE_SIZE), gl.getParameter(gl.MAX_RENDERBUFFER_SIZE),
+          viewportLimits?.[0] ?? 8192, viewportLimits?.[1] ?? 8192, 8192
+        ) : 8192
+        let renderPixelRatio = window.devicePixelRatio
+        const resizeCanvas = (): void => {
+          if (cancelled || !app) return
+          const width = host.clientWidth || 420
+          const height = host.clientHeight || 520
+          const settings = usePetStore.getState()
+          renderPixelRatio = window.devicePixelRatio
+          app.renderer.resize(width, height, petRenderResolution(
+            settings.antialiasing, settings.antialiasingSamples, renderPixelRatio, width, height, maxDimension
+          ))
+          // Fractional SSAA resolutions round buffer dimensions; keep the CSS frame exact.
+          if (canvas) { canvas.style.width = `${width}px`; canvas.style.height = `${height}px` }
+        }
+        resizeCanvas()
+        unsubscribeRendering = usePetStore.subscribe((state, previous) => {
+          if (state.antialiasing !== previous.antialiasing || state.antialiasingSamples !== previous.antialiasingSamples) resizeCanvas()
+        })
 
         setStatus('加载模型…')
         // 用主进程探测补全后的 modelJSON 构造设置，这样磁盘上有、但 model3.json 没声明的
@@ -231,7 +258,7 @@ export default function Live2DPet({ modelPath, opacity, actions }: Props): JSX.E
           const w2 = host.clientWidth || 420
           const h2 = host.clientHeight || 520
           try {
-            app?.renderer.resize(w2, h2)
+            resizeCanvas()
           } catch {
             /* 渲染器已销毁 */
           }
@@ -258,6 +285,7 @@ export default function Live2DPet({ modelPath, opacity, actions }: Props): JSX.E
 
         // 每帧应用：缩放（滑条值）+ 平移（右键拖动）+ 眼睛追踪 + 口型
         const applyTransform = (): void => {
+          if (window.devicePixelRatio !== renderPixelRatio) resizeCanvas()
           const { scale, offsetX, offsetY, eyeTracking, eyeTrackingStrength } = usePetStore.getState()
           sprite.scale.set(fit.baseFit * scale)
           sprite.anchor.set(0.5, 1)
@@ -267,7 +295,7 @@ export default function Live2DPet({ modelPath, opacity, actions }: Props): JSX.E
           sprite.x += pose?.x ?? 0
           sprite.y += pose?.y ?? 0
           if (pose) interaction?.applyJoints(pose)
-          // 眼睛追踪：开 → 平滑趋近光标；关 → 回正
+          // Authored motions own head/gaze while playing; tracking resumes afterwards.
           if (eyeTracking) {
             curNX += (targetNX - curNX) * 0.1
             curNY += (targetNY - curNY) * 0.1
@@ -278,23 +306,22 @@ export default function Live2DPet({ modelPath, opacity, actions }: Props): JSX.E
           // Leave headroom for near-limit gestures; eyes still follow the cursor.
           const gazeX = 1 - Math.min(1, Math.abs(pose?.angleX ?? 0) / 30)
           const gazeY = 1 - Math.min(1, Math.abs(pose?.angleY ?? 0) / 30)
-          sprite.setParameterValueById('ParamAngleX', curNX * 15 * eyeTrackingStrength * gazeX + (pose?.angleX ?? 0))
-          sprite.setParameterValueById('ParamAngleY', -curNY * 12 * eyeTrackingStrength * gazeY + (pose?.angleY ?? 0))
-          if (pose) sprite.setParameterValueById('ParamAngleZ', pose.angleZ)
           const gazeWeight = pose?.gazeWeight ?? 0
-          sprite.setParameterValueById('ParamEyeBallX', curNX * 1.5 * eyeTrackingStrength * (1 - gazeWeight) + (pose?.gazeX ?? 0) * gazeWeight)
-          sprite.setParameterValueById('ParamEyeBallY', -curNY * 1.5 * eyeTrackingStrength * (1 - gazeWeight) + (pose?.gazeY ?? 0) * gazeWeight)
           const speech = useSpeechStore.getState()
-          sprite.setParameterValueById('ParamMouthOpenY', speech.speaking ? speech.mouthLevel : (pose?.mouthOpen ?? 0))
-          controller?.apply({
-            ParamAngleX: curNX * 15 * eyeTrackingStrength * gazeX + (pose?.angleX ?? 0),
-            ParamAngleY: -curNY * 12 * eyeTrackingStrength * gazeY + (pose?.angleY ?? 0),
-            ParamAngleZ: pose?.angleZ ?? 0,
-            ParamEyeBallX: curNX * 1.5 * eyeTrackingStrength * (1 - gazeWeight) + (pose?.gazeX ?? 0) * gazeWeight,
-            ParamEyeBallY: -curNY * 1.5 * eyeTrackingStrength * (1 - gazeWeight) + (pose?.gazeY ?? 0) * gazeWeight,
-            ParamMouthOpenY: speech.speaking ? speech.mouthLevel : (pose?.mouthOpen ?? 0),
-            __speaking: speech.speaking ? 1 : 0
-          })
+          const natural: Record<string, number> = { __speaking: speech.speaking ? 1 : 0 }
+          if (pose || (eyeTracking && !controller?.isAuthoredMotionPlaying())) {
+            natural.ParamAngleX = curNX * 15 * eyeTrackingStrength * gazeX + (pose?.angleX ?? 0)
+            natural.ParamAngleY = -curNY * 12 * eyeTrackingStrength * gazeY + (pose?.angleY ?? 0)
+            natural.ParamEyeBallX = curNX * 1.5 * eyeTrackingStrength * (1 - gazeWeight) + (pose?.gazeX ?? 0) * gazeWeight
+            natural.ParamEyeBallY = -curNY * 1.5 * eyeTrackingStrength * (1 - gazeWeight) + (pose?.gazeY ?? 0) * gazeWeight
+          }
+          if (pose) natural.ParamAngleZ = pose.angleZ
+          // Release the mouth when silent, so expressions and authored talk motions work.
+          if (speech.speaking || pose) natural.ParamMouthOpenY = speech.speaking ? speech.mouthLevel : pose!.mouthOpen
+          for (const id of ['ParamAngleX', 'ParamAngleY', 'ParamAngleZ', 'ParamEyeBallX', 'ParamEyeBallY', 'ParamMouthOpenY']) {
+            sprite.setParameterValueById(id, natural[id] ?? 0, id in natural ? 1 : 0)
+          }
+          controller?.apply(natural)
           // 隐藏免费模型水印/广告：Paramheadxy* 参数 30=隐藏、0=显示，每帧强制覆盖（无此参数的模型是空操作）
           for (const name of ['Paramheadxy', 'Paramheadxy2', 'Paramheadxy3', 'Paramheadxy4', 'Paramheadxy5', 'Paramheadxy6', 'Paramheadxy7', 'Paramheadxy8', 'Paramheadxy9']) {
             sprite.setParameterValueById(name, 30)
@@ -338,7 +365,7 @@ export default function Live2DPet({ modelPath, opacity, actions }: Props): JSX.E
               void sprite.startMotion({
                 group: a.group,
                 no: a.index,
-                priority: Priority.Normal
+                priority: Priority.Force
               }).catch((e) => console.warn('[live2d] 动作执行失败', e))
             }
           } catch (e) {
@@ -348,6 +375,12 @@ export default function Live2DPet({ modelPath, opacity, actions }: Props): JSX.E
 
         // 调试钩子：便于排查「按钮点了没反应」这类问题（生产环境无害）
         ;(window as any).__l2dDebug = {
+          get rendering() {
+            return { resolution: app?.renderer.resolution, scale: sprite.scale.x,
+              x: sprite.x, y: sprite.y, expression: interaction?.getManualExpression(),
+              head: interaction?.headPosition() }
+          },
+          hitAt(x: number, y: number) { return petInteractionRef.current?.hitAt(x, y) ?? null },
           get expressions(): string[] {
             try {
               return sprite.getExpressions().map((e) => e.name)
@@ -427,6 +460,7 @@ export default function Live2DPet({ modelPath, opacity, actions }: Props): JSX.E
 
     return () => {
       cancelled = true
+      unsubscribeRendering?.()
       interaction?.destroy()
       usePetStore.getState().setModelReady(false)
       live2dActionRef.current = null

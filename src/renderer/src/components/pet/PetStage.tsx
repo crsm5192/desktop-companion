@@ -32,6 +32,7 @@ export default function PetStage(): JSX.Element {
         setEyeTracking(cfg.pet.eyeTracking)
         setEyeTrackingStrength(cfg.pet.eyeTrackingStrength)
         setOpacity(cfg.pet.opacity ?? 1)
+        usePetStore.getState().setAntialiasing(cfg.pet.antialiasing, cfg.pet.antialiasingSamples)
         usePetStore.getState().setInteractionEnabled(cfg.pet.interactionEnabled ?? false)
         usePetStore.getState().setEdgeSnapEnabled(cfg.pet.edgeSnapEnabled ?? false)
       })

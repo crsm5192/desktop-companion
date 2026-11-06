@@ -9,6 +9,8 @@
 ## 功能
 
 - 🐱 **Live2D 桌宠**：透明置顶窗 + 点击穿透 + 锁定模式，支持拖拽移动 / 右键平移 / 框架整体缩放 / 不透明度调节、眼球追踪、随机气泡、口型联动、**一键复位**。
+- ✨ **模型抗锯齿**：渲染器默认开启基础抗锯齿（`antialias: true`，实际 MSAA 样本数由显卡决定）。设置 → 桌宠中可开启“增强模型抗锯齿”并选择 2× / 4× / 8× 超采样，即时生效并自动保存，关闭增强后保留所选倍率与基础抗锯齿。超采样倍率表示每个屏幕像素的采样数量；适配屏幕像素密度，显卡或画布达到尺寸上限时自动限制实际采样分辨率。切换不重载模型，保留当前表情、动作、缩放和平移。
+- ⚙️ **分类设置**：桌宠、对话、语音、同步、高级五个分类，常用选项按用途分组，高级选项可折叠。桌宠设置即时保存，其他配置通过底部固定的“保存设置”按钮保存；切换分类、切换语音模式或收起窗口保留填写中的草稿。
 - 🎭 **模型表情与动作自动发现**：自动扫描模型目录，补全未在 `model3.json` 中声明的表情/动作，统一在独立“表情”窗口浏览和搜索；支持 VTS 导出与 Cubism 原生模型，换模型不用改配置。
 - 🧹 **水印清理**：内置常见免费模型的水印/广告参数压制（如 `Paramheadxy*`），部分模型可写进 `.moc3` 默认值，换机也不丢。
 - 💬 **图片与文字对话**：独立聊天侧窗，支持流式回复、选择/粘贴/拖入图片，AI 回复同时显示在聊天记录和桌宠气泡中。任何实现标准 `/v1/chat/completions` 接口的服务都能使用；看图需选择支持图片输入的模型。
@@ -22,6 +24,14 @@
 - 🩺 **诊断日志**：启动时在数据目录写 `diagnostic.log`，排查模型/音乐路径、WebGL 等问题。
 - 🖥️ **托盘与窗口操作**：托盘右键“复位”恢复模型居中和 1× 缩放；“吸附”前的对号表示开关已开启；“框架回到屏幕下方正中”将底部按钮对齐任务栏上缘。
 - 🎬 **AI 表演与控制**：表情动作跟随实际语音开始播放，支持连续动作曲线和外部 WebSocket Agent 控制。
+
+## v0.7.0 更新（2026-11-06）
+
+- 模型渲染默认开启基础抗锯齿，可在设置中选择 2× / 4× / 8× 增强超采样，切换时保留模型、表情与位置。
+- 设置按桌宠、对话、语音、同步、高级分类，优化控件分组、草稿保留与底部保存按钮；支持窄窗口布局。
+- 修复无语音时持续闭嘴、关闭追踪后仍覆盖头部和视线的问题，恢复模型自带表情和动作的相关参数。
+- 模型动作播放时暂时让出追踪参数，动作结束后恢复；手动点击动作可替换当前动作，语音播放期间口型仍优先跟随音频。
+- 增加模型诊断工具和 [subaru 模型整改要求](docs/subaru-模型整改要求.md)。模型制作侧的变形增强与动作重制仍需原 Cubism 工程，本版发布软件修复。
 
 ## v0.6.0 更新（2026-11-06）
 
@@ -189,7 +199,7 @@ npm run build:win:nsis       # NSIS 安装版（启动快）
 npm run build:win            # 两者都出
 ```
 
-v0.6.0 产物在 `release/`：`DesktopCompanion.0.6.0.exe`（便携）和 `DesktopCompanion.Setup.0.6.0.exe`（安装）。两者均为 Windows x64，模型与音乐不嵌入 exe。单独打包命令会将本机已有的模型/音乐目录复制到 `release/`，发布时只上传 exe。
+v0.7.0 产物在 `release/`：`DesktopCompanion.0.7.0.exe`（便携）和 `DesktopCompanion.Setup.0.7.0.exe`（安装）。两者均为 Windows x64，模型与音乐不嵌入 exe。单独打包命令会将本机已有的模型/音乐目录复制到 `release/`，发布时只上传 exe。
 
 发布构建可使用 `npm run build:win -- --publish never`，同时生成两种 exe，再上传 GitHub Release。
 
@@ -240,8 +250,8 @@ npm run test:window-placement
 
 | 版本 | 说明 |
 |---|---|
-| **[便携版 v0.6.0](https://github.com/crsm5192/desktop-companion/releases/download/v0.6.0/DesktopCompanion.0.6.0.exe)** | Windows x64，免安装，下载后直接运行；模型/音乐/配置/数据都在 exe 旁边，可整个文件夹带走 |
-| **[安装版 v0.6.0](https://github.com/crsm5192/desktop-companion/releases/download/v0.6.0/DesktopCompanion.Setup.0.6.0.exe)** | Windows x64，NSIS 安装包；数据存在 `%APPDATA%\DesktopCompanion\`，覆盖安装不清空 |
+| **[便携版 v0.7.0](https://github.com/crsm5192/desktop-companion/releases/download/v0.7.0/DesktopCompanion.0.7.0.exe)** | Windows x64，免安装，下载后直接运行；模型/音乐/配置/数据都在 exe 旁边，可整个文件夹带走 |
+| **[安装版 v0.7.0](https://github.com/crsm5192/desktop-companion/releases/download/v0.7.0/DesktopCompanion.Setup.0.7.0.exe)** | Windows x64，NSIS 安装包；数据存在 `%APPDATA%\DesktopCompanion\`，覆盖安装不清空 |
 
 > 全部版本见 **[Releases](https://github.com/crsm5192/desktop-companion/releases)**。
 > 模型与音乐因版权不随包分发，需自行放入数据目录（见上文「数据存放位置」）。

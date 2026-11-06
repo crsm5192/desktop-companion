@@ -141,7 +141,7 @@ async function main() {
   expectedControlAddress = `ws://127.0.0.1:${apiPort}`
   const token = 'isolated-test-token-123456789'
   fs.writeFileSync(path.join(profile, 'config.json'), JSON.stringify({
-    pet: { modelPath, eyeTracking: true, interactionEnabled: false, locked: true, scale: 1, winX: 80, winY: 80 },
+    pet: { modelPath, eyeTracking: !process.argv.includes('--model-diagnostic'), interactionEnabled: false, locked: true, scale: 1, winX: 80, winY: 80 },
     controlApi: { enabled: true, port: apiPort, token },
     llm: { baseUrl: `http://127.0.0.1:${fixture.address().port}`, apiKey: '', model: 'fixture' },
     tts: { server: { baseUrl: `http://127.0.0.1:${fixture.address().port}`, voice: 'fixture', lang: '', langAdapt: 'off' } },
@@ -172,6 +172,8 @@ async function main() {
     await waitFor(() => fetch(`http://127.0.0.1:${debugPort}/json/list`).then(response => response.ok), process.argv.includes('--portable') ? 120000 : 20000)
     const mainTarget = await waitFor(async () => (await (await fetch(`http://127.0.0.1:${mainDebugPort}/json/list`)).json())[0])
     mainInspector = await cdp(mainTarget.webSocketDebuggerUrl)
+    report.version = await mainInspector.evaluate(`process.getBuiltinModule('module').createRequire(process.cwd() + '/package.json')('electron').app.getVersion()`)
+    assert.equal(report.version, JSON.parse(fs.readFileSync(path.join(root,'package.json'),'utf8')).version, 'test application version differs from source')
     const chatVisible = () => mainInspector.evaluate(`process.getBuiltinModule('module').createRequire(process.cwd() + '/package.json')('electron').BrowserWindow.getAllWindows().some(window => window.webContents.getURL().endsWith('#chat') && window.isVisible())`)
     assert.equal(await chatVisible(), false)
     const target = await waitFor(async () => (await pages()).find(page => page.type === 'page' && !page.url.includes('#chat')))
@@ -183,6 +185,10 @@ async function main() {
     await waitFor(() => pet.evaluate('!!document.querySelector(".pet-wrap canvas") && !document.querySelector(".live2d-badge")'), 120000)
     assert.equal(await pet.evaluate('window.api.chat.history.get().then(messages=>messages.length)'), 0, 'independent test profile imported user chat history')
     const model = await snapshot()
+    if (process.argv.includes('--model-diagnostic')) {
+      await require('./model-diagnostic.cjs')({ pet, pages, cdp, request, snapshot, report, artifacts, pause, waitFor, modelPath })
+      return
+    }
     assert.ok(model.expressions.length >= 20); assert.ok(model.motions.length >= 8)
     assert.ok(model.parameters.some(parameter => parameter.id === 'ParamEyeBallX'))
     report.expressions = model.expressions.length; report.motions = model.motions.length; report.parameters = model.parameters.length
@@ -191,6 +197,158 @@ async function main() {
       const image = await pet.send('Page.captureScreenshot', { format: 'png' })
       fs.writeFileSync(path.join(artifacts, name + '.png'), Buffer.from(image.data, 'base64'))
       report.screenshots.push(name + '.png')
+    }
+    if (process.argv.includes('--settings-only')) {
+      await pet.evaluate(`window.api.panelWindow.setOpen('settings',true)`)
+      const target = await waitFor(async () => (await pages()).find(page => page.url.endsWith('#panel=settings')))
+      const settings = await cdp(target.webSocketDebuggerUrl)
+      const nativeSettings = `process.getBuiltinModule('module').createRequire(process.cwd()+'/package.json')('electron').BrowserWindow.getAllWindows().find(win=>win.webContents.getURL().endsWith('#panel=settings'))`
+      try {
+        await waitFor(() => settings.evaluate(`document.querySelectorAll('.settings-tabs [role="tab"]').length===5`))
+        const click = async selector => {
+          const position = await settings.evaluate(`(() => {const element=document.querySelector(${JSON.stringify(selector)});element.scrollIntoView({block:'center'});const rect=element.getBoundingClientRect();return {x:rect.x+rect.width/2,y:rect.y+rect.height/2};})()`)
+          await settings.send('Input.dispatchMouseEvent',{type:'mousePressed',...position,button:'left',clickCount:1})
+          await settings.send('Input.dispatchMouseEvent',{type:'mouseReleased',...position,button:'left',clickCount:1})
+        }
+        const tab = async id => {
+          await click('#settings-tab-'+id)
+          await waitFor(() => settings.evaluate(`document.querySelector('#settings-tab-${id}').getAttribute('aria-selected')==='true' && [...document.querySelectorAll('[role="tabpanel"]')].filter(panel=>!panel.hidden).length===1`))
+        }
+        const edit = (selector,value) => settings.evaluate(`(() => {const input=document.querySelector(${JSON.stringify(selector)});Object.getOwnPropertyDescriptor(input instanceof HTMLTextAreaElement?HTMLTextAreaElement.prototype:input instanceof HTMLSelectElement?HTMLSelectElement.prototype:HTMLInputElement.prototype,'value').set.call(input,${JSON.stringify(String(value))});input.dispatchEvent(new Event(input instanceof HTMLSelectElement?'change':'input',{bubbles:true}));})()`)
+        const capture = async name => {
+          const image=await settings.send('Page.captureScreenshot',{format:'png'})
+          fs.writeFileSync(path.join(artifacts,name+'.png'),Buffer.from(image.data,'base64'))
+          report.screenshots.push(name+'.png')
+        }
+        assert.equal(await settings.evaluate(`document.querySelector('[role="tabpanel"]:not([hidden])').id`),'settings-section-pet')
+        await capture('settings-pet')
+        await tab('chat')
+        await edit('#settings-section-chat .settings-grid input','测试角色草稿')
+        await edit('#settings-section-chat .settings-card:nth-of-type(2) .settings-grid input','fixture-draft-model')
+        await click('#settings-section-chat details summary')
+        await edit('#settings-section-chat textarea','测试对话规则草稿')
+        await capture('settings-chat')
+        await tab('voice')
+        const voiceSelector='#settings-section-voice .settings-grid input'
+        await edit(voiceSelector,'draft-voice')
+        await edit('#settings-section-voice select','command')
+        await edit('#settings-section-voice select','server')
+        assert.equal(await settings.evaluate(`document.querySelector(${JSON.stringify(voiceSelector)}).value`),'draft-voice')
+        await capture('settings-voice')
+        await tab('sync');await capture('settings-sync')
+        await tab('advanced');await capture('settings-advanced')
+        await pet.evaluate(`window.api.panelWindow.setOpen('settings',false)`)
+        await pet.evaluate(`window.api.panelWindow.setOpen('settings',true)`)
+        assert.equal(await settings.evaluate(`document.querySelector('[role="tab"][aria-selected="true"]').id`),'settings-tab-advanced')
+        await tab('chat')
+        assert.equal(await settings.evaluate(`document.querySelector('#settings-section-chat .settings-grid input').value`),'测试角色草稿')
+        assert.equal(await settings.evaluate(`document.querySelector('#settings-section-chat textarea').value`),'测试对话规则草稿')
+        await tab('pet')
+        await edit('input[aria-label="桌宠不透明度"]',0.35)
+        await waitFor(() => pet.evaluate(`window.api.getConfig().then(config=>config.pet.opacity===0.35)`))
+        const before=await pet.evaluate('window.api.getConfig()')
+        assert.notEqual(before.character.name,'测试角色草稿','auto-saved appearance unexpectedly saved conversation drafts')
+        assert.notEqual(before.tts.server.voice,'draft-voice')
+        assert.equal(await settings.evaluate(`!!document.querySelector('.settings-unsaved')`),true)
+        const footerBefore=await settings.evaluate(`document.querySelector('.settings-footer').getBoundingClientRect().y`)
+        await settings.evaluate(`document.querySelector('.settings-content').scrollTop=10000`)
+        assert.equal(await settings.evaluate(`document.querySelector('.settings-footer').getBoundingClientRect().y`),footerBefore)
+        await click('.save-btn')
+        await waitFor(() => settings.evaluate(`!document.querySelector('.settings-unsaved') && !document.querySelector('.save-btn').disabled`))
+        const saved=await pet.evaluate('window.api.getConfig()')
+        assert.equal(saved.character.name,'测试角色草稿');assert.equal(saved.llm.model,'fixture-draft-model')
+        assert.equal(saved.chat.persona,'测试对话规则草稿');assert.equal(saved.tts.server.voice,'draft-voice')
+        assert.equal(saved.pet.opacity,0.35)
+        await settings.evaluate(`document.querySelector('#settings-tab-pet').focus()`)
+        await settings.send('Input.dispatchKeyEvent',{type:'keyDown',key:'ArrowRight',code:'ArrowRight',windowsVirtualKeyCode:39})
+        await settings.send('Input.dispatchKeyEvent',{type:'keyUp',key:'ArrowRight',code:'ArrowRight',windowsVirtualKeyCode:39})
+        await waitFor(() => settings.evaluate(`document.querySelector('#settings-tab-chat').getAttribute('aria-selected')==='true'`))
+        pass('five actual settings tabs preserve drafts across categories, voice modes and hide/reopen; appearance saves independently and global save commits drafts; keyboard navigation and fixed footer work')
+        await mainInspector.evaluate(`${nativeSettings}.setSize(320,560)`)
+        await pause(300)
+        for (const id of ['pet','chat','voice','sync','advanced']) {
+          await tab(id)
+          const layout=await settings.evaluate(`(() => {const body=document.querySelector('.settings-content');const save=document.querySelector('.save-btn').getBoundingClientRect();return {width:body.clientWidth,scrollWidth:body.scrollWidth,save:{x:save.x,y:save.y,right:save.right,bottom:save.bottom},viewport:{width:innerWidth,height:innerHeight}};})()`)
+          assert.ok(layout.scrollWidth<=layout.width+1,JSON.stringify({id,layout}))
+          assert.ok(layout.save.x>=0&&layout.save.y>=0&&layout.save.right<=layout.viewport.width&&layout.save.bottom<=layout.viewport.height,JSON.stringify({id,layout}))
+        }
+        await tab('chat');await capture('settings-narrow')
+        await mainInspector.evaluate(`${nativeSettings}.setSize(460,640)`)
+        await tab('pet');await capture('settings-pet')
+        pass('all settings categories fit a 320px window without horizontal overflow and keep the save button visible')
+        report.success=true
+        return
+      } finally {settings.socket.terminate()}
+    }
+    if (process.argv.includes('--antialias-only')) {
+      const baselineAA = await pet.evaluate(`(() => {const canvas=document.querySelector('.pet-wrap canvas');const gl=canvas.getContext('webgl2')??canvas.getContext('webgl');return {antialias:gl.getContextAttributes().antialias,samples:gl.getParameter(gl.SAMPLES)};})()`)
+      assert.equal(baselineAA.antialias,true,'hardware antialiasing was not enabled by default')
+      assert.ok(baselineAA.samples>0,'default framebuffer has no MSAA samples')
+      report.hardwareAntialiasing=baselineAA
+      pass('actual WebGL context enables baseline hardware antialiasing with MSAA samples by default')
+      await pet.evaluate(`window.api.setConfig({pet:{eyeTracking:false,scale:0.9,offsetX:11,offsetY:-7}})`)
+      await pet.evaluate(`window.api.panelWindow.setOpen('settings',true)`)
+      const target = await waitFor(async () => (await pages()).find(page => page.url.endsWith('#panel=settings')))
+      const settings = await cdp(target.webSocketDebuggerUrl)
+      try {
+        await waitFor(() => settings.evaluate(`!!document.querySelector('input[aria-label="模型抗锯齿"]')`))
+        assert.deepEqual(await settings.evaluate(`(() => {const checkbox=document.querySelector('input[aria-label="模型抗锯齿"]');const select=document.querySelector('select[aria-label="抗锯齿倍率"]');return {enabled:checkbox.checked,disabled:select.disabled,samples:Number(select.value),options:[...select.options].map(option=>Number(option.value))};})()`), {enabled:false,disabled:true,samples:2,options:[2,4,8]})
+        await pet.evaluate(`window.api.panelWindow.setOpen('actions',true)`)
+        const actionTarget = await waitFor(async () => (await pages()).find(page => page.url.endsWith('#panel=actions')))
+        const actions = await cdp(actionTarget.webSocketDebuggerUrl)
+        try {
+          await waitFor(() => actions.evaluate(`!!document.querySelector('.model-action-btn[title="脸红"]')`))
+          await actions.evaluate(`document.querySelector('.model-action-btn[title="脸红"]').click()`)
+        } finally { actions.socket.terminate() }
+        await pet.evaluate(`window.api.panelWindow.setOpen('actions',false)`)
+        await waitFor(async () => (await pet.evaluate('window.__l2dDebug.rendering')).expression === '脸红')
+        await pause(400)
+        const baseline = await pet.evaluate(`(() => {window.__aaCanvas=document.querySelector('.pet-wrap canvas');const rect=window.__aaCanvas.getBoundingClientRect();return {width:rect.width,height:rect.height,...window.__l2dDebug.rendering};})()`)
+        const point = await pet.evaluate(`(() => {const rect=window.__aaCanvas.getBoundingClientRect();for(let y=rect.top+rect.height*0.25;y<rect.bottom-30;y+=20)for(let x=rect.left+rect.width*0.3;x<rect.left+rect.width*0.7;x+=20){if(window.__l2dDebug.hitAt(x,y))return {x,y};}return null;})()`)
+        assert.ok(point, 'model pixels cannot be hit before enabling AA')
+        const enable = () => settings.evaluate(`document.querySelector('input[aria-label="模型抗锯齿"]').click()`)
+        const select = samples => settings.evaluate(`(() => {const select=document.querySelector('select[aria-label="抗锯齿倍率"]');select.scrollIntoView({block:'center'});Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype,'value').set.call(select,${JSON.stringify(String(samples))});select.dispatchEvent(new Event('change',{bubbles:true}));})()`)
+        const check = async (enabled, samples) => {
+          await waitFor(async () => {
+            const config = await settings.evaluate('window.api.getConfig()')
+            return config.pet.antialiasing === enabled && config.pet.antialiasingSamples === samples
+          })
+          const density = await pet.evaluate('window.devicePixelRatio')
+          const expected = enabled ? density * Math.sqrt(samples) : 1
+          await waitFor(() => pet.evaluate(`Math.abs(window.__l2dDebug.rendering.resolution-${expected})<0.001`))
+          await pause(250)
+          const actual = await pet.evaluate(`(() => {const canvas=document.querySelector('.pet-wrap canvas');const rect=canvas.getBoundingClientRect();const gl=canvas.getContext('webgl2')??canvas.getContext('webgl');return {sameCanvas:canvas===window.__aaCanvas,pixelWidth:canvas.width,pixelHeight:canvas.height,width:rect.width,height:rect.height,contextLost:gl.isContextLost(),hit:window.__l2dDebug.hitAt(${point.x},${point.y}),...window.__l2dDebug.rendering};})()`)
+          assert.equal(actual.sameCanvas,true,'AA switch reloaded the model')
+          assert.equal(actual.contextLost,false)
+          assert.ok(Math.abs(actual.pixelWidth-baseline.width*expected)<=1)
+          assert.ok(Math.abs(actual.pixelHeight-baseline.height*expected)<=1)
+          assert.equal(actual.width,baseline.width);assert.equal(actual.height,baseline.height)
+          assert.equal(actual.scale,baseline.scale);assert.equal(actual.x,baseline.x);assert.equal(actual.y,baseline.y)
+          assert.equal(actual.expression,'脸红')
+          assert.equal(await pet.evaluate(`(() => {const canvas=document.querySelector('.pet-wrap canvas');return (canvas.getContext('webgl2')??canvas.getContext('webgl')).getContextAttributes().antialias;})()`),true,'toggling enhanced AA disabled baseline hardware AA')
+          assert.ok(actual.hit,'pixel hit testing stopped working at this AA multiplier')
+          assert.ok(Math.abs(actual.head.x-baseline.head.x)<6 && Math.abs(actual.head.y-baseline.head.y)<6,'head bubble anchor changed with render density')
+          report.antialiasing ||= []
+          report.antialiasing.push({enabled,samples,density,...actual})
+        }
+        await enable();await check(true,2)
+        for (const samples of [4,8,2,8]) {await select(samples);await check(true,samples)}
+        await enable();await check(false,8)
+        await enable();await check(true,8)
+        assert.deepEqual(JSON.parse(fs.readFileSync(path.join(profile,'config.json'),'utf8')).pet.antialiasingSamples,8)
+        const image=await settings.send('Page.captureScreenshot',{format:'png'})
+        fs.writeFileSync(path.join(artifacts,'panel-settings-antialiasing.png'),Buffer.from(image.data,'base64'))
+        report.screenshots.push('panel-settings-antialiasing.png')
+        pass('actual settings control 2x/4x/8x SSAA, preserve model/canvas/expression/placement and keep pixel hit testing plus head anchor correct')
+        await pet.send('Page.reload')
+        await waitFor(() => pet.evaluate(`!!window.__l2dDebug && !document.querySelector('.live2d-badge') && Math.abs(window.__l2dDebug.rendering.resolution-window.devicePixelRatio*Math.sqrt(8))<0.001`),120000)
+        await settings.send('Page.reload')
+        await waitFor(() => settings.evaluate(`document.querySelector('input[aria-label="模型抗锯齿"]')?.checked && document.querySelector('select[aria-label="抗锯齿倍率"]')?.value==='8'`))
+        assert.equal(JSON.parse(fs.readFileSync(path.join(profile,'config.json'),'utf8')).pet.antialiasing,true)
+        pass('renderer and settings reload restore the saved enabled state and 8x multiplier')
+        report.success=true
+        return
+      } finally {settings.socket.terminate()}
     }
     if (process.argv.includes('--opacity-only')) {
       const names = ['chat', 'music', 'pomodoro', 'todo', 'diary', 'actions', 'settings']
@@ -291,6 +449,10 @@ async function main() {
     await waitFor(() => api.events.some(event => event.event === 'speech.finished'))
     report.mouthRange = [Math.min(...levels), Math.max(...levels)]
     pass('real audio analysis closes mouth in silence and opens with audio amplitude')
+    if (process.argv.includes('--pet-control-only')) {
+      await verifyHandMotion()
+      report.success = true; return
+    }
     }
     await mainInspector.evaluate(`process.getBuiltinModule('module').createRequire(process.cwd() + '/package.json')('electron').BrowserWindow.getAllWindows().find(window => !window.webContents.getURL().includes('#chat')).show()`)
     const checkToolbarPlacement = async (docked = false) => {
@@ -650,7 +812,7 @@ async function main() {
     child.kill()
     await Promise.race([new Promise(resolve => child.once('exit', resolve)), pause(5000)])
     fixture.closeAllConnections(); await new Promise(resolve => fixture.close(resolve))
-    const reportName = process.argv.includes('--opacity-only') ? 'panel-opacity-test-report.json' : process.argv.includes('--chat-window-only') ? 'panel-windows-test-report.json' : 'live-test-report.json'
+    const reportName = argument('--report') ? path.basename(argument('--report')) : process.argv.includes('--model-diagnostic') ? 'model-diagnostic-report.json' : process.argv.includes('--pet-control-only') ? 'pet-control-test-report.json' : process.argv.includes('--settings-only') ? 'settings-test-report.json' : process.argv.includes('--antialias-only') ? 'antialiasing-test-report.json' : process.argv.includes('--opacity-only') ? 'panel-opacity-test-report.json' : process.argv.includes('--chat-window-only') ? 'panel-windows-test-report.json' : 'live-test-report.json'
     fs.writeFileSync(path.join(artifacts, reportName), JSON.stringify(report, null, 2))
     fs.writeFileSync(path.join(artifacts, 'electron-test.log'), logs)
   }

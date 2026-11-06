@@ -14,6 +14,7 @@ export interface Live2DController {
   execute(command: ControlCommand): Promise<unknown>
   apply(natural: Record<string, number>): void
   capabilities(): ModelCapabilities
+  isAuthoredMotionPlaying(): boolean
   reset(): void
   destroy(): void
 }
@@ -182,6 +183,7 @@ export function createLive2DController(sprite: Live2DSprite, modelPath: string, 
   })
   return {
     capabilities, reset,
+    isAuthoredMotionPlaying: () => internal._model._motionManager._currentPriority > Priority.Idle,
     execute: async command => {
       if (command.type === 'model.get') return capabilities()
       if (command.type === 'parameters.set') {

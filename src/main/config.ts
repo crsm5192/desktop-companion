@@ -4,6 +4,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import type { AppConfig, DeepPartial } from '../shared/types'
 import { mergeControlApi } from '../shared/control'
+import { isAntialiasingSamples } from '../shared/petRendering'
 import { externalConfigFile } from './paths'
 
 // 默认配置 —— 请按你自己的环境修改（也可在设置面板或 config.json 里改）：
@@ -57,6 +58,8 @@ const DEFAULT_CONFIG: AppConfig = {
     scale: 1.0,
     opacity: 1.0,
     panelOpacity: 1.0,
+    antialiasing: false,
+    antialiasingSamples: 2,
     frameScale: 1.0,
     clickThrough: false,
     locked: false,
@@ -132,6 +135,8 @@ export function getConfig(): AppConfig {
   } catch (e) {
     console.error('[config] 读取失败，回退默认配置：', e)
   }
+  if (typeof loaded.pet.antialiasing !== 'boolean') loaded.pet.antialiasing = false
+  if (!isAntialiasingSamples(loaded.pet.antialiasingSamples)) loaded.pet.antialiasingSamples = 2
   if (!loaded.controlApi.token) {
     loaded = { ...loaded, controlApi: { ...loaded.controlApi, token: randomBytes(24).toString('hex') } }
     mkdirSync(dirname(f), { recursive: true })
@@ -143,6 +148,8 @@ export function getConfig(): AppConfig {
 
 export function setConfig(patch: DeepPartial<AppConfig>): AppConfig {
   const next = mergeConfig(getConfig(), patch)
+  if (typeof next.pet.antialiasing !== 'boolean') throw new Error('抗锯齿开关必须为开启或关闭')
+  if (!isAntialiasingSamples(next.pet.antialiasingSamples)) throw new Error('抗锯齿倍率必须为 2×、4× 或 8×')
   if (!Number.isInteger(next.controlApi.port) || next.controlApi.port < 1024 || next.controlApi.port > 65535) throw new Error('控制端口必须是 1024 到 65535 的整数')
   if (typeof next.controlApi.token !== 'string' || next.controlApi.token.length < 16 || next.controlApi.token.length > 256) throw new Error('连接令牌必须为 16 到 256 个字符')
   cache = next
